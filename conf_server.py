@@ -1,5 +1,8 @@
 import asyncio
 from util import *
+import socket
+import time
+import threading
 
 
 class ConferenceServer:
@@ -49,6 +52,16 @@ class MainServer:
         self.conference_conns = None
         self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceManager
 
+        # build socket
+        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+        self.serverSocket.bind((server_ip, main_port))
+        print('The server is ready to receive')
+        # while True:
+        #     connectionSocket, clientAddress = self.serverSocket.accept()
+        #     client_thread = threading.Thread(target=handle_client, args=(connectionSocket, clientAddress))
+        #     client_thread.start()  # 启动线程
+
+
     def handle_creat_conference(self,):
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
@@ -81,9 +94,34 @@ class MainServer:
         """
         start MainServer
         """
-        pass
+        while True:
+            try:
+                # 接收数据
+                data, client_address = self.serverSocket.recvfrom(921600)
+                if not data:
+                    continue
+                
+                # 解码接收到的图像数据
+                frame_data = np.frombuffer(data, dtype='uint8')
+                img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
+                
+                if img is not None:
+                    # 在图像上显示“server”字样
+                    cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    cv2.imshow('server', img)
+                
+                # 按下 'q' 键退出
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+            except Exception as e:
+                print(f"Error: {e}")
+                break
+            
+        self.serverSocket.close()
+        cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
-    server = MainServer(SERVER_IP, MAIN_SERVER_PORT)
+    server = MainServer('127.0.0.1', 7000)
     server.start()

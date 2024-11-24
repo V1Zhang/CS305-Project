@@ -1,5 +1,5 @@
 from util import *
-
+import socket
 
 class ConferenceClient:
     def __init__(self,):
@@ -15,11 +15,38 @@ class ConferenceClient:
 
         self.recv_data = None  # you may need to save received streamd data from other clients in conference
 
+        self.Socket= socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # 创建UDP套接字
+
+
     def create_conference(self):
         """
         create a conference: send create-conference request to server and obtain necessary data to
         """
-        pass
+        cap = cv2.VideoCapture(0)
+        # 设置镜头分辨率，默认是640x480
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        addr = ('127.0.0.1', 7000) 
+
+        while True:
+            _, img = cap.read()
+
+            img = cv2.flip(img, 1)
+
+            # 压缩图片
+            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
+
+            self.Socket.sendto(send_data,addr)
+            print(f'正在发送数据，大小:{img.size} Byte')
+
+            cv2.putText(img, "client", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            cv2.imshow('client', img)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        self.clientSocket.close()
+        cv2.destroyAllWindows()
+
 
     def join_conference(self, conference_id):
         """
@@ -90,7 +117,7 @@ class ConferenceClient:
             cmd_input = input(f'({status}) Please enter a operation (enter "?" to help): ').strip().lower()
             fields = cmd_input.split(maxsplit=1)
             if len(fields) == 1:
-                if cmd_input in ('?', '？'):
+                if cmd_input in ('?', '?'):
                     print(HELP)
                 elif cmd_input == 'create':
                     self.create_conference()
