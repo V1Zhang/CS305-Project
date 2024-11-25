@@ -1,5 +1,6 @@
 from util import *
 import socket
+import threading
 
 class ConferenceClient:
     def __init__(self,):
@@ -16,18 +17,46 @@ class ConferenceClient:
         self.recv_data = None  # you may need to save received streamd data from other clients in conference
 
         self.Socket= socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # 创建UDP套接字
-
-
-    def create_conference(self):
+        self.Socket.bind(('0.0.0.0', 0))
+        
+    def send_text_message(self):
         """
-        create a conference: send create-conference request to server and obtain necessary data to
+        发送文本消息到服务器
         """
+        while True:
+            message = input("Enter your message (type 'q' to quit): ").strip()
+            if message.lower() == 'q':
+                break
+            try:
+                data = f"TEXT {message}".encode()  # 添加协议头
+                self.Socket.sendto(data, ('127.0.0.1', 7000))
+            except Exception as e:
+                print(f"Error sending message: {e}")
+
+                
+    def receive_text_message(self):
+        """
+        接收来自服务器的文本消息
+        """
+        while True:
+            try:
+                data, server_address = self.Socket.recvfrom(1024)
+                header, payload = data[:5].decode(), data[5:]
+                print(header)
+                if header == "TEXT ":
+                    print(payload.decode())
+                else:
+                    print("Non-text data received (not handled in this function).")
+            except Exception as e:
+                print(f"Error receiving message: {e}")
+                break
+            
+    def send_video_stream(self):
         cap = cv2.VideoCapture(0)
         # 设置镜头分辨率，默认是640x480
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         addr = ('127.0.0.1', 7000) 
-
         while True:
             _, img = cap.read()
 
@@ -35,9 +64,9 @@ class ConferenceClient:
 
             # 压缩图片
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-
-            self.Socket.sendto(send_data,addr)
-            print(f'正在发送数据，大小:{img.size} Byte')
+            video_data = b"VIDEO" + send_data.tobytes()
+            self.Socket.sendto(video_data,addr)
+            # print(f'正在发送数据，大小:{img.size} Byte')
 
             cv2.putText(img, "client", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.imshow('client', img)
@@ -46,6 +75,15 @@ class ConferenceClient:
 
         self.clientSocket.close()
         cv2.destroyAllWindows()
+
+    def create_conference(self):
+        """
+        create a conference: send create-conference request to server and obtain necessary data to
+        """
+        
+        threading.Thread(target=self.receive_text_message, daemon=True).start()
+        # threading.Thread(target=self.send_video_stream, daemon=True).start()
+        self.send_text_message()
 
 
     def join_conference(self, conference_id):
@@ -121,6 +159,7 @@ class ConferenceClient:
                     print(HELP)
                 elif cmd_input == 'create':
                     self.create_conference()
+                    self.send_text_message()
                 elif cmd_input == 'quit':
                     self.quit_conference()
                 elif cmd_input == 'cancel':

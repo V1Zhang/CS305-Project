@@ -51,7 +51,7 @@ class MainServer:
 
         self.conference_conns = None
         self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceManager
-
+        self.clients = []
         # build socket
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
         self.serverSocket.bind((server_ip, main_port))
@@ -89,6 +89,25 @@ class MainServer:
         running task: handle out-meeting (or also in-meeting) requests from clients
         """
         pass
+    
+    def broadcast_message(self, message, sender_address):
+        """
+        Broadcast text messages to all connected clients except the sender.
+        """
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        formatted_message = f"[{timestamp}] {sender_address}: {message}"
+        broadcast_data = f"TEXT {formatted_message}".encode()  # 添加协议头
+
+        print(f"Broadcasting message: {formatted_message}")
+        for client in self.clients:
+            # if client != sender_address:  # 不发送给消息发送者
+                print(client)
+                try:
+                    self.serverSocket.sendto(broadcast_data, client)
+                except Exception as e:
+                    print(f"Error sending message to {client}: {e}")
+
+
 
     def start(self):
         """
@@ -98,18 +117,31 @@ class MainServer:
             try:
                 # 接收数据
                 data, client_address = self.serverSocket.recvfrom(921600)
+                
                 if not data:
                     continue
+                header, payload = data[:5].decode(), data[5:]  # 协议头为固定长度5字节
+                print(header)
+                if client_address not in self.clients:
+                    self.clients.append(client_address)
                 
-                # 解码接收到的图像数据
-                frame_data = np.frombuffer(data, dtype='uint8')
-                img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
-                
-                if img is not None:
-                    # 在图像上显示“server”字样
-                    cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                    cv2.imshow('server', img)
-                
+                if header == "TEXT ":
+                    message = payload.decode()
+                    self.broadcast_message(message, client_address)
+                elif header == "VIDEO":   
+                    # 解码接收到的图像数据
+                    frame_data = np.frombuffer(payload, dtype='uint8')
+                    img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
+                    
+                    if img is not None:
+                        # 在图像上显示“server”字样
+                        cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                        cv2.imshow('server', img)
+                elif header == "AUDIO":
+                    ##
+                    print("Audio data received (not yet implemented).")
+                    
+                    
                 # 按下 'q' 键退出
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -117,6 +149,7 @@ class MainServer:
             except Exception as e:
                 print(f"Error: {e}")
                 break
+        
             
         self.serverSocket.close()
         cv2.destroyAllWindows()
