@@ -77,7 +77,8 @@ class ConferenceClient:
         while self.is_working:
             try:
                 data, server_address = self.Socket.recvfrom(1024)
-                header, payload = data[:5].decode(), data[5:]
+                header, port, payload = self.decode_message(data)
+                self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
                 if header == "TEXT ":
                     message = payload.decode()
                     self.text_output.insert(tk.END, f"Received: {message}\n")
@@ -86,6 +87,13 @@ class ConferenceClient:
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
+    
+    def decode_message(self,data):
+        # 报文类型(5 bytes)端口号(2 bytes)数据
+        header = data[:5].decode()
+        port = int.from_bytes(data[5:7], byteorder='big')
+        payload = data[7:]
+        return header, port, payload
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)

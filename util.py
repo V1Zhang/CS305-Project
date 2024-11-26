@@ -10,6 +10,7 @@ import pyautogui
 import numpy as np
 from PIL import Image, ImageGrab
 from config import *
+import struct
 
 
 # audio setting
@@ -146,3 +147,14 @@ def decompress_image(image_bytes):
     image = Image.open(img_byte_arr)
 
     return image
+
+def encode_message(header, port, payload):
+    """
+    encode message with header and payload
+    :param header: str, message header
+    :param payload: bytes, message payload
+    :return: bytes, encoded message
+    """
+    encoded_port = struct.pack('>H',port)
+    return f"{header}{encoded_port.decode('latin-1')}{payload}".encode()
+
