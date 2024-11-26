@@ -4,6 +4,9 @@ import cv2
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
+from aioquic.asyncio import connect
+from aioquic.asyncio.protocol import QuicConnectionProtocol
+from aioquic.quic.configuration import QuicConfiguration
 
 class ConferenceClient:
     def __init__(self):
@@ -15,7 +18,9 @@ class ConferenceClient:
         self.share_data = {}
         self.conference_info = None
         self.recv_data = None
-
+        self.is_host = False # if the client is the host of the conference
+        self.inconference = False
+        # self.quic_config = QuicConfiguration(is_client=True)
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.Socket.bind(('0.0.0.0', 0))
 
@@ -56,7 +61,7 @@ class ConferenceClient:
 
     def update_status(self, status):
         self.status_label.config(text=f"Status: {status}")
-
+    
     def send_text_message(self):
         message = self.message_entry.get().strip()
         if message:
@@ -122,9 +127,24 @@ class ConferenceClient:
             self.video_button.config(text="Start Video Stream")
 
     def create_conference(self):
-        threading.Thread(target=self.receive_text_message, daemon=True).start()
-        self.update_status("On Meeting")
-        self.text_output.insert(tk.END, "Conference Created.\n")
+        if not self.inconference:
+            conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
+            if conference_id and conference_id.isdigit():
+                threading.Thread(target=self.receive_text_message, daemon=True).start()
+                self.update_status(f"On Meeting {conference_id}")
+                self.text_output.insert(tk.END, f"Conference id {conference_id} Created.\n")
+                self.inconference = True
+                self.host = True
+                message = f"CREAT{conference_id}"
+                try:
+                    data = message.encode()
+                    self.Socket.sendto(data, ('127.0.0.1', 7000))
+                    self.text_output.insert(tk.END, f"Sent: {message}\n")
+                    self.message_entry.delete(0, tk.END)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error sending message: {e}")
+        else:
+            messagebox.showwarning("Warning", "You are already in a conference.")
 
     def join_conference_gui(self):
         conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
