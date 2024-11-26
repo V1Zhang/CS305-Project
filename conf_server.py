@@ -36,11 +36,17 @@ class ConferenceServer:
         """
         running task: receive sharing stream data from a client and decide how to forward them to the rest clients
         """
+        # timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+
+
 
     async def handle_client(self, reader, writer):
         """
         running task: handle the in-meeting requests or messages from clients
         """
+
+    
 
     async def log(self):
         while self.running:
@@ -51,12 +57,63 @@ class ConferenceServer:
         """
         handle cancel conference request: disconnect all connections to cancel the conference
         """
+    
+    def broadcast_message(self,message,sender_address):
+        """
+        Broadcast text messages to all connected clients except the sender.
+        """
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        formatted_message = f"[{timestamp}] {sender_address}: {message}"
+        broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
+        print(f"Broadcasting message: {formatted_message}")
+        for client in self.clients_info:
+            # if client != sender_address:
+                try:
+                    self.udpSocket.sendto(broadcast_data,client)
+                    print("Message sent.")
+                except Exception as e:
+                    print(f"Error sending message to {client}: {e}")
+
+    def broadcast_info(self,info,sender_address):
+        """
+        Broadcast text messages to all connected clients except the sender.
+        """
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        formatted_message = f"[{timestamp}] {sender_address}: {info}"
+        broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
+        print(f"Broadcasting message: {formatted_message}")
+        for client in self.clients_info:
+            # if client != sender_address:
+                try:
+                    self.udpSocket.sendto(broadcast_data,client)
+                    print("Message sent.")
+                except Exception as e:
+                    print(f"Error sending message to {client}: {e}")
+
 
     def start(self):
         # 暂时还是用UDP作为传输层协议
         '''
         start the ConferenceServer and necessary running tasks to handle clients in this conference
         '''
+        print(f"Conference {self.conference_id} server is ready to receive and the udp port is {self.udp_port}")
+        # loop.create_task(self.log())
+        while True:
+            try:
+                data, client_address = self.udpSocket.recvfrom(1024)
+                if not data:
+                    continue
+                header, payload = data[:5].decode(), data[5:]
+                print(header)
+                if header == "TEXT ":
+                    message = payload.decode()
+                    self.broadcast_message(message,client_address)
+            except Exception as e:
+                print(f"Error: {e}")
+                break
+
+        
+
 
 
 
@@ -71,6 +128,7 @@ class MainServer:
         self.conference_conns = None
         self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceServer
         self.clients = []
+        self.threads = {}
         # build socket
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serverSocket.bind((server_ip, main_port))
@@ -82,7 +140,7 @@ class MainServer:
 
 
     def handle_create_conference(self,conference_id,conference_host_address):
-        # TODO: 重复的conference id
+        # TODO: 重复的conference id，将线程修改为异步并发
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
         """
@@ -91,7 +149,12 @@ class MainServer:
         conference_server.clients_info.append(conference_host_address)
         self.host_address = conference_host_address
         print(self.conference_servers)
-        conference_server.start()
+        # Create a new thread for the conference_server
+        conference_thread = threading.Thread(target=conference_server.start)
+        conference_thread.start()
+        self.threads[conference_id] = conference_thread
+        # Reply to the client
+        
 
 
         
@@ -101,6 +164,13 @@ class MainServer:
         join conference: search corresponding conference_info and ConferenceServer, and reply necessary info to client
         """
         # 绑定客户端到指定的端口
+        if conference_id not in self.conference_servers.keys():
+            print(f"Conference {conference_id} not found.")
+            return False
+        else :
+            print(f"Conference {conference_id} found.")
+            return True
+
 
     def handle_quit_conference(self):
         """
@@ -173,8 +243,22 @@ class MainServer:
                     message = payload.decode()
                     print(f"Create conference {message} request received.")
                     self.handle_create_conference(conference_id=int(message),conference_host_address=client_address)
+
                     reply = f"You have been assigned to conference {message}"
-                    self.serverSocket.sendto(encode_message("TEXT ",self.server_port,reply), client_address)
+                    print(self.conference_servers[int(message)].udp_port)
+                    self.serverSocket.sendto(encode_message("TEXT ",self.conference_servers[int(message)].udp_port,reply), client_address)
+                elif header == "JOIN ":
+                    message = payload.decode()
+                    print(f"Join conference {message} request received.")
+                    flag = self.handle_join_conference(conference_id=int(message))
+                    if flag:
+                        reply = "OK"
+                        self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
+                        self.conference_servers[int(message)].clients_info.append(client_address)
+                        #TODO: 告知所有的客户有新人加入
+                    else:
+                        reply = f"NK"
+                        self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
 
                 # # 按下 'q' 键退出
                 if cv2.waitKey(1) & 0xFF == ord('q'):

@@ -7,6 +7,7 @@ from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
+import util
 
 class ConferenceClient:
     def __init__(self):
@@ -16,10 +17,12 @@ class ConferenceClient:
         self.conns = None
         self.support_data_types = []
         self.share_data = {}
-        self.conference_info = None
+        self.conference_port = None
         self.recv_data = None
         self.is_host = False # if the client is the host of the conference
         self.inconference = False
+        self.threads = {}
+        self.join_success = False
         # self.quic_config = QuicConfiguration(is_client=True)
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.Socket.bind(('0.0.0.0', 0))
@@ -63,11 +66,14 @@ class ConferenceClient:
         self.status_label.config(text=f"Status: {status}")
     
     def send_text_message(self):
+        if not self.inconference:
+            messagebox.showwarning("Warning", "You are not in a conference.")
+            return
         message = self.message_entry.get().strip()
         if message:
             try:
                 data = f"TEXT {message}".encode()
-                self.Socket.sendto(data, ('127.0.0.1', 7000))
+                self.Socket.sendto(data, ('127.0.0.1', self.conference_port))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
                 self.message_entry.delete(0, tk.END)
             except Exception as e:
@@ -77,23 +83,21 @@ class ConferenceClient:
         while self.is_working:
             try:
                 data, server_address = self.Socket.recvfrom(1024)
-                header, port, payload = self.decode_message(data)
+                header, port, payload = util.decode_message(data)
                 self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
                 if header == "TEXT ":
-                    message = payload.decode()
-                    self.text_output.insert(tk.END, f"Received: {message}\n")
+                    self.conference_port = port
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                elif header == "JOIN ":
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    if payload == "OK":
+                        self.conference_port = port
+                        self.join_success = True
                 else:
                     self.text_output.insert(tk.END, "Non-text data received (not handled in this function).\n")
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
-    
-    def decode_message(self,data):
-        # 报文类型(5 bytes)端口号(2 bytes)数据
-        header = data[:5].decode()
-        port = int.from_bytes(data[5:7], byteorder='big')
-        payload = data[7:]
-        return header, port, payload
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
@@ -138,7 +142,9 @@ class ConferenceClient:
         if not self.inconference:
             conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
             if conference_id and conference_id.isdigit():
-                threading.Thread(target=self.receive_text_message, daemon=True).start()
+                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+                host_thread.start()
+                self.threads['host'] = host_thread
                 self.update_status(f"On Meeting {conference_id}")
                 self.text_output.insert(tk.END, f"Conference id {conference_id} Created.\n")
                 self.inconference = True
@@ -148,15 +154,35 @@ class ConferenceClient:
                     data = message.encode()
                     self.Socket.sendto(data, ('127.0.0.1', 7000))
                     self.text_output.insert(tk.END, f"Sent: {message}\n")
-                    self.message_entry.delete(0, tk.END)
                 except Exception as e:
                     messagebox.showerror("Error", f"Error sending message: {e}")
         else:
             messagebox.showwarning("Warning", "You are already in a conference.")
 
     def join_conference_gui(self):
+        if self.inconference:
+            messagebox.showwarning("Warning", "You are already in a conference.")
+            return
         conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
         if conference_id and conference_id.isdigit():
+            # 后续添加密码验证
+            message = f"JOIN {conference_id}"
+            try:
+                data = message.encode()
+                self.Socket.sendto(data,('127.0.0.1',7000))
+                self.text_output.insert(tk.END, f"Sent: {message}\n")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error sending message: {e}")
+            guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+            guest_thread.start()
+            if self.join_success:
+                self.inconference = True
+                self.update_status(f"On Meeting {conference_id}")
+                self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
+                self.threads['guest'] = guest_thread
+            else:
+                messagebox.showwarning("Warning", "Join conference failed.")
+                # 不能终止线程
             self.join_conference(conference_id)
         else:
             messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
