@@ -9,6 +9,8 @@ from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 import util
 
+# TODO: 文字传输改为TCP
+
 class ConferenceClient:
     def __init__(self):
         self.is_working = True
@@ -19,12 +21,12 @@ class ConferenceClient:
         self.share_data = {}
         self.conference_port = None
         self.recv_data = None
-        self.is_host = False # if the client is the host of the conference
-        self.inconference = False
         self.threads = {}
-        self.join_success = False
+        self.join_success = threading.Event()
+        self.conference_id = None
         # self.quic_config = QuicConfiguration(is_client=True)
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.Socket.bind(('0.0.0.0', 0))
 
         # GUI setup
@@ -52,7 +54,7 @@ class ConferenceClient:
         self.join_button = tk.Button(self.window, text="Join Conference", command=self.join_conference_gui)
         self.join_button.pack()
 
-        self.quit_button = tk.Button(self.window, text="Quit Conference", command=self.quit_conference)
+        self.quit_button = tk.Button(self.window, text="Quit Conference", command=self.quit_conference_gui)
         self.quit_button.pack()
 
         self.video_label = tk.Label(self.window)
@@ -66,7 +68,7 @@ class ConferenceClient:
         self.status_label.config(text=f"Status: {status}")
     
     def send_text_message(self):
-        if not self.inconference:
+        if not self.conference_id:
             messagebox.showwarning("Warning", "You are not in a conference.")
             return
         message = self.message_entry.get().strip()
@@ -92,7 +94,11 @@ class ConferenceClient:
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                     if payload == "OK":
                         self.conference_port = port
-                        self.join_success = True
+                        self.join_success.set()
+                elif header == "CANCE":
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    # self.cancel_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
                 else:
                     self.text_output.insert(tk.END, "Non-text data received (not handled in this function).\n")
             except Exception as e:
@@ -139,7 +145,7 @@ class ConferenceClient:
             self.video_button.config(text="Start Video Stream")
 
     def create_conference(self):
-        if not self.inconference:
+        if not self.conference_id:
             conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
             if conference_id and conference_id.isdigit():
                 host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
@@ -147,7 +153,7 @@ class ConferenceClient:
                 self.threads['host'] = host_thread
                 self.update_status(f"On Meeting {conference_id}")
                 self.text_output.insert(tk.END, f"Conference id {conference_id} Created.\n")
-                self.inconference = True
+                self.conference_id = conference_id
                 self.host = True
                 message = f"CREAT{conference_id}"
                 try:
@@ -160,7 +166,7 @@ class ConferenceClient:
             messagebox.showwarning("Warning", "You are already in a conference.")
 
     def join_conference_gui(self):
-        if self.inconference:
+        if self.conference_id:
             messagebox.showwarning("Warning", "You are already in a conference.")
             return
         conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
@@ -175,14 +181,15 @@ class ConferenceClient:
                 messagebox.showerror("Error", f"Error sending message: {e}")
             guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
             guest_thread.start()
-            if self.join_success:
-                self.inconference = True
+            if self.join_success.is_set():
+                self.conference_id = conference_id
                 self.update_status(f"On Meeting {conference_id}")
                 self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
                 self.threads['guest'] = guest_thread
             else:
                 messagebox.showwarning("Warning", "Join conference failed.")
-                # 不能终止线程
+                return
+                # TODO:线程同步问题，改成异步
             self.join_conference(conference_id)
         else:
             messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
@@ -191,7 +198,23 @@ class ConferenceClient:
         self.update_status(f"On Meeting - {conference_id}")
         self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
 
+    def quit_conference_gui(self):
+        if not self.conference_id:
+            messagebox.showwarning("Warning", "You are not in a conference.")
+            return
+        message = f"QUIT {self.conference_id}"
+        try:
+            data = message.encode()
+            self.Socket.sendto(data,('127.0.0.1',7000))
+            self.text_output.insert(tk.END, f"Sent: {message}\n")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error sending message: {e}")
+        self.quit_conference()
+
     def quit_conference(self):
+        self.conference_id = None
+        self.conference_port = None
+        self.join_success.clear()
         self.update_status("Free")
         self.text_output.insert(tk.END, "Left the conference.\n")
 

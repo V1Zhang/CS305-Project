@@ -4,6 +4,7 @@ import socket
 import time
 import threading
 import struct
+import config
 
 
 class ConferenceServer:
@@ -74,16 +75,18 @@ class ConferenceServer:
                 except Exception as e:
                     print(f"Error sending message to {client}: {e}")
 
-    def broadcast_info(self,info,sender_address):
+    def broadcast_info(self,info,error):
         """
-        Broadcast text messages to all connected clients except the sender.
+        Broadcast text messages to all connected clients: Someone is added to the conference, the conference is cloesd, etc.
         """
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-        formatted_message = f"[{timestamp}] {sender_address}: {info}"
-        broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
+        formatted_message = f"[{timestamp}]: {info}"
+        if error == BROADCAST_JOIN:
+            broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
+        elif error == BROADCAST_CANCEL_CONFERENCE:
+            broadcast_data = encode_message("CANCL",self.udp_port,formatted_message)
         print(f"Broadcasting message: {formatted_message}")
         for client in self.clients_info:
-            # if client != sender_address:
                 try:
                     self.udpSocket.sendto(broadcast_data,client)
                     print("Message sent.")
@@ -153,7 +156,6 @@ class MainServer:
         conference_thread = threading.Thread(target=conference_server.start)
         conference_thread.start()
         self.threads[conference_id] = conference_thread
-        # Reply to the client
         
 
 
@@ -172,17 +174,26 @@ class MainServer:
             return True
 
 
-    def handle_quit_conference(self):
+    def handle_quit_conference(self,conference_id,client_address):
         """
         quit conference (in-meeting request & or no need to request)
         """
-        pass
+        self.conference_servers[conference_id].clients_info.remove(client_address)
+        # 如果已经没有人在会议中，则关闭会议
+        if len(self.conference_servers[conference_id].clients_info) == 0:
+            self.handle_cancel_conference(conference_id)
+        
 
-    def handle_cancel_conference(self):
+    def handle_cancel_conference(self,conference_id):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
-        pass
+        self.conference_servers[conference_id].broadcast_info("The conference is closed.",BROADCAST_CANCEL_CONFERENCE)
+        # self.threads[conference_id].join()
+        # TODO: 关闭线程
+        del self.conference_servers[conference_id]
+        del self.threads[conference_id]
+        
 
     async def request_handler(self, reader, writer):
         """
@@ -255,10 +266,15 @@ class MainServer:
                         reply = "OK"
                         self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
                         self.conference_servers[int(message)].clients_info.append(client_address)
-                        #TODO: 告知所有的客户有新人加入
+                        self.conference_servers[int(message)].broadcast_info(f"{client_address} has joined the conference.",BROADCAST_JOIN)
                     else:
                         reply = f"NK"
                         self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
+                elif header == "QUIT ":
+                    message = payload.decode()
+                    print(f"Quit conference {message} request received.")
+                    self.handle_quit_conference(conference_id=int(message),client_address=client_address)
+
 
                 # # 按下 'q' 键退出
                 if cv2.waitKey(1) & 0xFF == ord('q'):
