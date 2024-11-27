@@ -92,14 +92,23 @@ class ConferenceClient:
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                 elif header == "JOIN ":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
-                    if payload == "OK":
+                    content = payload.split(':')
+                    status_code, conference_id = content[0], content[1]
+                    if status_code == "OK":
                         self.conference_port = port
                         self.join_success.set()
+                        self.conference_id = conference_id
+                        self.update_status(f"On Meeting {conference_id}")
+                        self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
+                    else:
+                        messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
+                        break
+                    self.join_conference(conference_id)
                 elif header == "CANCE":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                     # self.cancel_conference()
                     # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
-                else:
+                else: 
                     self.text_output.insert(tk.END, "Non-text data received (not handled in this function).\n")
             except Exception as e:
                 print(f"Error receiving message: {e}")
@@ -181,16 +190,6 @@ class ConferenceClient:
                 messagebox.showerror("Error", f"Error sending message: {e}")
             guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
             guest_thread.start()
-            if self.join_success.is_set():
-                self.conference_id = conference_id
-                self.update_status(f"On Meeting {conference_id}")
-                self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
-                self.threads['guest'] = guest_thread
-            else:
-                messagebox.showwarning("Warning", "Join conference failed.")
-                return
-                # TODO:线程同步问题，改成异步
-            self.join_conference(conference_id)
         else:
             messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
 

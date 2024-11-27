@@ -263,12 +263,12 @@ class MainServer:
                     print(f"Join conference {message} request received.")
                     flag = self.handle_join_conference(conference_id=int(message))
                     if flag:
-                        reply = "OK"
+                        reply = f"OK:{message}"
                         self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
                         self.conference_servers[int(message)].clients_info.append(client_address)
                         self.conference_servers[int(message)].broadcast_info(f"{client_address} has joined the conference.",BROADCAST_JOIN)
                     else:
-                        reply = f"NK"
+                        reply = f"NK:{message}"
                         self.serverSocket.sendto(encode_message("JOIN ", self.server_port, reply), client_address)
                 elif header == "QUIT ":
                     message = payload.decode()
