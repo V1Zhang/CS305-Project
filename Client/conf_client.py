@@ -8,6 +8,9 @@ from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 import util
+import pyaudio
+import numpy as np
+import wave
 
 # TODO: 文字传输改为TCP
 
@@ -48,6 +51,9 @@ class ConferenceClient:
         self.video_button = tk.Button(self.window, text="Start Video Stream", command=self.toggle_video_stream)
         self.video_button.pack()
 
+        self.audio_button = tk.Button(self.window, text="Start audio Stream", command=self.toggle_audio_stream)
+        self.audio_button.pack()
+
         self.create_button = tk.Button(self.window, text="Create Conference", command=self.create_conference)
         self.create_button.pack()
 
@@ -60,9 +66,16 @@ class ConferenceClient:
         self.video_label = tk.Label(self.window)
         self.video_label.pack()
 
+        ## video part
         self.cap = None
         self.video_thread = None
         self.video_running = False
+
+        # ausio part
+        self.P = None
+        self.audio_thread = None
+        self.audio_running = False
+
 
     def update_status(self, status):
         self.status_label.config(text=f"Status: {status}")
@@ -152,6 +165,40 @@ class ConferenceClient:
         else:
             self.video_running = False
             self.video_button.config(text="Start Video Stream")
+
+    def send_audio_stream(self):
+
+        self.P=pyaudio.PyAudio()
+        audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
+        # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
+        addr = ('127.0.0.1', 7000)
+
+        while self.audio_running:
+            audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
+            print(len(audio_data))
+            # output_stream.write(audio_data)  # Write audio to speakers
+            audio_data = b"AUDIO" + audio_data
+            self.Socket.sendto(audio_data, addr)
+
+        audio_stream.stop_stream()
+        audio_stream.close()
+        # 终止PyAudio对象，释放占用的系统资源
+        self.P.terminate()
+
+
+    
+    def toggle_audio_stream(self):
+        if not self.audio_running:
+            self.audio_running = True
+            self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
+            self.audio_thread.start()
+            self.audio_button.config(text="Stop audio Stream")
+        else:
+            self.audio_running = False
+            self.audio_button.config(text="Start audio Stream")
+
+
+
 
     def create_conference(self):
         if not self.conference_id:

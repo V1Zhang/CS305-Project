@@ -5,6 +5,7 @@ import time
 import threading
 import struct
 import config
+import matplotlib.pyplot as plt
 
 
 class ConferenceServer:
@@ -135,7 +136,11 @@ class MainServer:
         # build socket
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serverSocket.bind((server_ip, main_port))
+        self.P=pyaudio.PyAudio()
+        self.audio_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
         print('The server is ready to receive')
+        plt.ion()
+        self.fig, self.ax = plt.subplots()
         # while True:
         #     connectionSocket, clientAddress = self.serverSocket.accept()
         #     client_thread = threading.Thread(target=handle_client, args=(connectionSocket, clientAddress))
@@ -156,6 +161,7 @@ class MainServer:
         conference_thread = threading.Thread(target=conference_server.start)
         conference_thread.start()
         self.threads[conference_id] = conference_thread
+        
         
 
 
@@ -231,7 +237,7 @@ class MainServer:
                 if not data:
                     continue
                 header, payload = data[:5].decode(), data[5:]  # 协议头为固定长度5字节
-                print(header)
+                # print(header)
                 if client_address not in self.clients:
                     self.clients.append(client_address)
                 
@@ -242,14 +248,13 @@ class MainServer:
                     # 解码接收到的图像数据
                     frame_data = np.frombuffer(payload, dtype='uint8')
                     img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
-                    
                     if img is not None:
                         # 在图像上显示“server”字样
                         cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                         cv2.imshow('server', img)
                 elif header == "AUDIO":
-                    ##
-                    print("Audio data received (not yet implemented).")
+                    self.audio_stream.write(payload)
+                    print("Audio data received .")
                 elif header == "CREAT":
                     message = payload.decode()
                     print(f"Create conference {message} request received.")
