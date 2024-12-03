@@ -11,6 +11,9 @@ import util
 import pyaudio
 import numpy as np
 import wave
+from rtp import RTP,Extension,PayloadType
+import struct
+import queue
 
 # TODO: 文字传输改为TCP
 
@@ -23,6 +26,8 @@ class ConferenceClient:
         self.support_data_types = []
         self.share_data = {}
         self.conference_port = None
+        self.conference_audio_port = None
+        self.conference_video_port = None
         self.recv_data = None
         self.threads = {}
         self.join_success = threading.Event()
@@ -51,7 +56,7 @@ class ConferenceClient:
         self.video_button = tk.Button(self.window, text="Start Video Stream", command=self.toggle_video_stream)
         self.video_button.pack()
 
-        self.audio_button = tk.Button(self.window, text="Start audio Stream", command=self.toggle_audio_stream)
+        self.audio_button = tk.Button(self.window, text="Start Audio Stream", command=self.toggle_audio_stream)
         self.audio_button.pack()
 
         self.create_button = tk.Button(self.window, text="Create Conference", command=self.create_conference)
@@ -70,11 +75,16 @@ class ConferenceClient:
         self.cap = None
         self.video_thread = None
         self.video_running = False
-
         # ausio part
         self.P = None
         self.audio_thread = None
         self.audio_running = False
+
+        # For displaying other users' videos
+        self.other_video_labels = {}
+        self.video_queue = queue.Queue()
+        self.root = self.window  # Tkinter 主窗口引用
+        self.root.after(100, self.process_video_queue)
 
 
     def update_status(self, status):
@@ -97,18 +107,36 @@ class ConferenceClient:
     def receive_text_message(self):
         while self.is_working:
             try:
-                data, server_address = self.Socket.recvfrom(1024)
-                header, port, payload = util.decode_message(data)
-                self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
+                data, server_address = self.Socket.recvfrom(921600)
+                # 预解码
+                header = data[:5].decode()
+                if header == "AUDIO" or header == "VIDEO":
+                    port = struct.unpack('>H', data[5:7])[0]
+                    payload = data[7:]
+                    if header == "AUDIO":
+                        # self.receive_audio_stream(payload)
+                        pass
+                    elif header == "VIDEO":
+                        self.receive_video_stream(payload, server_address)
+                else:
+                    header, port, payload = util.decode_message(data)
+                    self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
                 if header == "TEXT ":
-                    self.conference_port = port
+                    if self.conference_port == None:
+                        self.conference_port = port
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                elif header == "CREAT":
+                    port_message = payload.split(' ')
+                    self.conference_audio_port = int(port_message[0])
+                    self.conference_video_port = int(port_message[1])
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                 elif header == "JOIN ":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                     content = payload.split(':')
                     status_code, conference_id = content[0], content[1]
                     if status_code == "OK":
-                        self.conference_port = port
+                        if self.conference_port == None:
+                            self.conference_port = port
                         self.join_success.set()
                         self.conference_id = conference_id
                         self.update_status(f"On Meeting {conference_id}")
@@ -121,8 +149,7 @@ class ConferenceClient:
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
                     # self.cancel_conference()
                     # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
-                else: 
-                    self.text_output.insert(tk.END, "Non-text data received (not handled in this function).\n")
+                    self.quit_conference()
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
@@ -131,13 +158,14 @@ class ConferenceClient:
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        addr = ('127.0.0.1', 7000)
+        addr = ('127.0.0.1', self.conference_video_port)
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
 
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            video_data = b"VIDEO" + send_data.tobytes()
+            # video_data = b"VIDEO" + send_data.tobytes()
+            video_data = send_data.tobytes()
             self.Socket.sendto(video_data, addr)
 
             # Convert OpenCV image to PIL image for Tkinter
@@ -156,7 +184,64 @@ class ConferenceClient:
         self.cap.release()
         self.video_label.config(image='')  # Clear the image in the Tkinter label
 
+    def receive_video_stream(self, video_data, client_address):
+        """
+        Receive video stream from other clients and enqueue it for GUI update.
+        """
+        # TODO: 标识到底是哪个client
+        # TODO: 关闭视频流传输会让画面消失
+        self.video_queue.put((video_data, client_address))
+
+    def process_video_queue(self):
+        """
+        Process video data from the queue and update the GUI.
+        """
+        while not self.video_queue.empty():
+            video_data, client_address = self.video_queue.get()
+            nparr = np.frombuffer(video_data, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img_pil = Image.fromarray(img_rgb)
+                img_tk = ImageTk.PhotoImage(img_pil)
+
+                # 检查是否已经为该客户端创建了视频标签
+                if client_address not in self.other_video_labels:
+                    # 创建一个新的标签来显示接收到的视频
+                    video_label = tk.Label(self.window)
+                    video_label.pack(side=tk.LEFT, padx=10, pady=10)  # 可以根据需要调整布局
+                    self.other_video_labels[client_address] = video_label
+
+                # 更新对应客户端的标签
+                self.other_video_labels[client_address].config(image=img_tk)
+                self.other_video_labels[client_address].image = img_tk
+
+        # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
+        self.root.after(100, self.process_video_queue)
+
+    def receive_audio_stream(self, audio_data):
+        """
+        Receive audio stream from other clients and play it.
+        """
+        # TODO: 辨别多个client的音轨
+        if not self.P:
+            self.P = pyaudio.PyAudio()
+            self.audio_stream = self.P.open(format=pyaudio.paInt16,
+                                            channels=1,
+                                            rate=44100,
+                                            output=True,
+                                            frames_per_buffer=2048)
+        try:
+            self.audio_stream.write(audio_data)
+        except Exception as e:
+            print(f"Error playing audio data: {e}")
+
+
+
     def toggle_video_stream(self):
+        if not self.conference_id:
+            messagebox.showwarning("Warning", "You are not in a conference.")
+            return
         if not self.video_running:
             self.video_running = True
             self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
@@ -167,17 +252,16 @@ class ConferenceClient:
             self.video_button.config(text="Start Video Stream")
 
     def send_audio_stream(self):
-
         self.P=pyaudio.PyAudio()
         audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
         # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
-        addr = ('127.0.0.1', 7000)
+        addr = ('127.0.0.1', self.conference_audio_port)
 
         while self.audio_running:
             audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
             print(len(audio_data))
             # output_stream.write(audio_data)  # Write audio to speakers
-            audio_data = b"AUDIO" + audio_data
+            # audio_data = b"AUDIO" + audio_data
             self.Socket.sendto(audio_data, addr)
 
         audio_stream.stop_stream()
@@ -188,14 +272,17 @@ class ConferenceClient:
 
     
     def toggle_audio_stream(self):
+        if not self.conference_id:
+            messagebox.showwarning("Warning", "You are not in a conference.")
+            return
         if not self.audio_running:
             self.audio_running = True
             self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
             self.audio_thread.start()
-            self.audio_button.config(text="Stop audio Stream")
+            self.audio_button.config(text="Stop Audio Stream")
         else:
             self.audio_running = False
-            self.audio_button.config(text="Start audio Stream")
+            self.audio_button.config(text="Start Audio Stream")
 
 
 
@@ -269,7 +356,19 @@ class ConferenceClient:
         self.text_output.insert(tk.END, "Conference cancelled.\n")
 
     def start(self):
+        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.window.mainloop()
+    
+    def on_closing(self):
+        self.is_working = False
+        self.video_running = False
+        self.audio_running = False
+        for thread in self.threads.values():
+            thread.join(timeout=1)
+        if self.P:
+            self.P.terminate()
+        self.Socket.close()
+        self.window.destroy()
 
 if __name__ == '__main__':
     client1 = ConferenceClient()
