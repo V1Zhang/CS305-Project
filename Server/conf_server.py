@@ -296,5 +296,5 @@ class MainServer:
 
 
 if __name__ == '__main__':
-    server = MainServer('127.0.0.1', 7000)
+    server = MainServer('192.168.56.1', 7000)
     server.start()

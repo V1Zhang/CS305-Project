@@ -88,7 +88,7 @@ class ConferenceClient:
         if message:
             try:
                 data = f"TEXT {message}".encode()
-                self.Socket.sendto(data, ('127.0.0.1', self.conference_port))
+                self.Socket.sendto(data, ('192.168.56.1', self.conference_port))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
                 self.message_entry.delete(0, tk.END)
             except Exception as e:
