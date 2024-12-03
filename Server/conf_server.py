@@ -112,28 +112,7 @@ class ConferenceServer:
                 except Exception as e:
                     print(f"Error sending message to {client}: {e}")
 
-
-    def start(self):
-        # 暂时还是用UDP作为传输层协议
-        '''
-        start the ConferenceServer and necessary running tasks to handle clients in this conference
-        '''
-        print(f"Conference {self.conference_id} server is ready to receive and the udp port is {self.udp_port}")
-        # loop.create_task(self.log())
-        while True:
-            try:
-                data, client_address = self.udpSocket.recvfrom(1024)
-                if not data:
-                    continue
-                header, payload = data[:5].decode(), data[5:]
-                print(header)
-                if header == "TEXT ":
-                    message = payload.decode()
-                    self.broadcast_message(message,client_address)
-            except Exception as e:
-                print(f"Error: {e}")
-                break
-
+    
     async def start(self):
         '''
         start the ConferenceServer and necessary running tasks to handle clients in this conference
@@ -170,7 +149,7 @@ class ConferenceServer:
         
     def forward_rtp_data(self, data, sender_address, data_type):
         """
-        转发 RTP 数据（音频或视频）到所有客户端，除了发送者
+        Forward RTP packets
         """
         # TODO
         for client in self.clients_info:
@@ -178,18 +157,24 @@ class ConferenceServer:
                 try:
                     if data_type == 'audio':
                         transport = self.audio_transport
+                        header_bytes = "AUDIO".encode()
+                        port_bytes = struct.pack('>H', self.audio_rtp_port)
+                        data = header_bytes + port_bytes + data
                     elif data_type == 'video':
                         transport = self.video_transport
+                        header_bytes = "VIDEO".encode()
+                        port_bytes = struct.pack('>H', self.video_rtp_port)
+                        data = header_bytes + port_bytes + data
                     else:
                         continue
                     transport.sendto(data, client)
-                    print(f"{data_type.capitalize()} RTP 数据包已发送到 {client}")
+                    print(f"{data_type.capitalize()} RTP packets are sent to {client}")
                 except Exception as e:
                     print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
 
     def handle_video_frame(self, data):
         """
-        解码并显示从客户端接收的视频帧
+        Decode Video Frame
         """
         # 解码图像
         # frame_data = np.frombuffer(data, dtype='uint8')
@@ -279,7 +264,7 @@ class RTPProtocol(asyncio.DatagramProtocol):
         if self.data_type == 'video':
             self.server.handle_video_frame(data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                    return
+                return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
         # TODO:
