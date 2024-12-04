@@ -190,6 +190,7 @@ class ConferenceClient:
         """
         # TODO: 标识到底是哪个client
         # TODO: 关闭视频流传输会让画面消失
+        print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
     def process_video_queue(self):

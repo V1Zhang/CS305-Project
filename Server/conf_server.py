@@ -87,7 +87,7 @@ class ConferenceServer:
         broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
         print(f"Broadcasting message: {formatted_message}")
         for client in self.clients_info:
-            # if client != sender_address:
+            if client != sender_address:
                 try:
                     self.udpSocket.sendto(broadcast_data,client)
                     print("Message sent.")
