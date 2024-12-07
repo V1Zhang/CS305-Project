@@ -7,7 +7,7 @@ from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-import util
+import util,config
 import pyaudio
 import numpy as np
 import wave
@@ -98,7 +98,7 @@ class ConferenceClient:
         if message:
             try:
                 data = f"TEXT {message}".encode()
-                self.Socket.sendto(data, ('127.0.0.1', self.conference_port))
+                self.Socket.sendto(data, (config.SERVER_IP, self.conference_port))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
                 self.message_entry.delete(0, tk.END)
             except Exception as e:
@@ -158,7 +158,7 @@ class ConferenceClient:
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        addr = ('127.0.0.1', self.conference_video_port)
+        addr = (config.SERVER_IP, self.conference_video_port)
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
@@ -256,7 +256,7 @@ class ConferenceClient:
         self.P=pyaudio.PyAudio()
         audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
         # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
-        addr = ('127.0.0.1', self.conference_audio_port)
+        addr = (config.SERVER_IP, self.conference_audio_port)
 
         while self.audio_running:
             audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
@@ -302,7 +302,7 @@ class ConferenceClient:
                 message = f"CREAT{conference_id}"
                 try:
                     data = message.encode()
-                    self.Socket.sendto(data, ('127.0.0.1', 7000))
+                    self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     self.text_output.insert(tk.END, f"Sent: {message}\n")
                 except Exception as e:
                     messagebox.showerror("Error", f"Error sending message: {e}")
@@ -319,7 +319,7 @@ class ConferenceClient:
             message = f"JOIN {conference_id}"
             try:
                 data = message.encode()
-                self.Socket.sendto(data,('127.0.0.1',7000))
+                self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
@@ -339,7 +339,7 @@ class ConferenceClient:
         message = f"QUIT {self.conference_id}"
         try:
             data = message.encode()
-            self.Socket.sendto(data,('127.0.0.1',7000))
+            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
             self.text_output.insert(tk.END, f"Sent: {message}\n")
         except Exception as e:
             messagebox.showerror("Error", f"Error sending message: {e}")

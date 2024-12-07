@@ -123,20 +123,20 @@ class ConferenceServer:
         # 创建用于处理文本消息的UDP端点
         self.text_transport, self.text_protocol = await loop.create_datagram_endpoint(
             lambda: TextMessageProtocol(self),
-            local_addr=('127.0.0.1',self.udp_port)  
+            local_addr=(SERVER_IP,self.udp_port)  
         )
         print(f"Text data is handled on port {self.udp_port}.")
         # 创建用于处理音频 RTP 流的 UDP 端点
         self.audio_transport, self.audio_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'audio'),
-            local_addr=('127.0.0.1', self.audio_rtp_port)
+            local_addr=(SERVER_IP, self.audio_rtp_port)
         )
         print(f"Audio data is handled on port {self.audio_rtp_port}.")
 
         # 创建用于处理视频 RTP 流的 UDP 端点
         self.video_transport, self.video_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'video'),
-            local_addr=('127.0.0.1', self.video_rtp_port)
+            local_addr=(SERVER_IP, self.video_rtp_port)
         )
         print(f"Video data is handled on port {self.video_rtp_port}.")
 
@@ -398,7 +398,7 @@ class MainServer:
         while True:
             try:
                 # 接收数据
-                data, client_address = self.serverSocket.recvfrom(921600)
+                data, client_address = self.serverSocket.recvfrom(1024)
                 if not data:
                     continue
                 header, payload = data[:5].decode(), data[5:]  # 协议头为固定长度5字节
@@ -464,5 +464,5 @@ class MainServer:
 
 
 if __name__ == '__main__':
-    server = MainServer('127.0.0.1', 7000)
+    server = MainServer(SERVER_IP, MAIN_SERVER_PORT)
     server.start()
