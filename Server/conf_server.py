@@ -15,19 +15,19 @@ class ConferenceServer:
         self.conference_id = conference_id  # conference_id for distinguish difference conference
         # 绑定端口
         self.udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udpSocket.bind(('0.0.0.0',0))
+        self.udpSocket.bind((SERVER_IP,0))
         self.udp_port = self.udpSocket.getsockname()[1]
 
         self.audio_rtpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.audio_rtpSocket.bind(('0.0.0.0',0))
+        self.audio_rtpSocket.bind((SERVER_IP,0))
         self.audio_rtp_port = self.audio_rtpSocket.getsockname()[1]
 
         self.video_rtpSocket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        self.video_rtpSocket.bind(('0.0.0.0',0))
+        self.video_rtpSocket.bind((SERVER_IP,0))
         self.video_rtp_port = self.video_rtpSocket.getsockname()[1]
 
         self.rtcpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.rtcpSocket.bind(('0.0.0.0',0))
+        self.rtcpSocket.bind((SERVER_IP,0))
         self.rtcp_port = self.rtcpSocket.getsockname()[1]
         
         self.conf_serve_ports = None
@@ -123,20 +123,20 @@ class ConferenceServer:
         # 创建用于处理文本消息的UDP端点
         self.text_transport, self.text_protocol = await loop.create_datagram_endpoint(
             lambda: TextMessageProtocol(self),
-            local_addr=(SERVER_IP,self.udp_port)  
+            sock=self.udpSocket
         )
         print(f"Text data is handled on port {self.udp_port}.")
         # 创建用于处理音频 RTP 流的 UDP 端点
         self.audio_transport, self.audio_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'audio'),
-            local_addr=(SERVER_IP, self.audio_rtp_port)
+            sock=self.audio_rtpSocket
         )
         print(f"Audio data is handled on port {self.audio_rtp_port}.")
 
         # 创建用于处理视频 RTP 流的 UDP 端点
         self.video_transport, self.video_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'video'),
-            local_addr=(SERVER_IP, self.video_rtp_port)
+            sock=self.video_rtpSocket
         )
         print(f"Video data is handled on port {self.video_rtp_port}.")
 
@@ -195,7 +195,7 @@ class ConferenceServer:
         frame_data = np.frombuffer(data, dtype='uint8')
         img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
         if img is not None:
-                        # 在图像上显示“server”字样
+            # 在图像上显示“server”字样
             cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.imshow('server', img)
     def handle_audio_data(self, data):
@@ -262,9 +262,10 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
         # self.server.add_client(addr)
         if self.data_type == 'video':
-            self.server.handle_video_frame(data)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                return
+            pass
+            # self.server.handle_video_frame(data)
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            #     return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
         # TODO:

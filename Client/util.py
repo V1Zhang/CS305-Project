@@ -14,21 +14,21 @@ import struct
 
 
 # audio setting
-FORMAT = pyaudio.paInt16
-audio = pyaudio.PyAudio()
-streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
+# FORMAT = pyaudio.paInt16
+# audio = pyaudio.PyAudio()
+# streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+# streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
 
 # print warning if no available camera
-cap = cv2.VideoCapture(0)
-if cap.isOpened():
-    can_capture_camera = True
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-else:
-    can_capture_camera = False
+# cap = cv2.VideoCapture(0)
+# if cap.isOpened():
+#     can_capture_camera = True
+#     cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+#     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+# else:
+#     can_capture_camera = False
 
-my_screen_size = pyautogui.size()
+# my_screen_size = pyautogui.size()
 
 
 def resize_image_to_fit_screen(image, my_screen_size):
