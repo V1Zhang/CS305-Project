@@ -262,10 +262,9 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
         # self.server.add_client(addr)
         if self.data_type == 'video':
-            pass
-            # self.server.handle_video_frame(data)
-            # if cv2.waitKey(1) & 0xFF == ord('q'):
-            #     return
+            self.server.handle_video_frame(data)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
         # TODO:
