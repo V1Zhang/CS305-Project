@@ -149,25 +149,29 @@ class ConferenceServer:
         
     def forward_rtp_data(self, data, sender_address, data_type):
         """
-        Forward RTP packets
+        Forward RTP data to all clients except the sender.
         """
-        # TODO
+        original_data = data
+    
         for client in self.clients_info:
             if client != sender_address:
                 try:
+                # 每次发送前都从original_data开始构造新包
+                    data = original_data
                     if data_type == 'audio':
                         transport = self.audio_transport
                         header_bytes = "AUDIO".encode()
                         port_bytes = struct.pack('>H', self.audio_rtp_port)
-                        data = header_bytes + port_bytes + data
+                        packet = header_bytes + port_bytes + data
                     elif data_type == 'video':
                         transport = self.video_transport
                         header_bytes = "VIDEO".encode()
                         port_bytes = struct.pack('>H', self.video_rtp_port)
-                        data = header_bytes + port_bytes + data
+                        packet = header_bytes + port_bytes + data
                     else:
                         continue
-                    transport.sendto(data, client)
+                
+                    transport.sendto(packet, client)
                     print(f"{data_type.capitalize()} RTP packets are sent to {client}")
                 except Exception as e:
                     print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
