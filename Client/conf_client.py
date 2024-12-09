@@ -14,6 +14,8 @@ import wave
 from rtp import RTP,Extension,PayloadType
 import struct
 import queue
+from time import time
+import RtpPacket
 
 # TODO: 文字传输改为TCP
 
@@ -159,6 +161,20 @@ class ConferenceClient:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         addr = (config.SERVER_IP, self.conference_video_port)
+
+        # RTP Packet Infomation
+        # VERSION = 2
+        # PADDING = 0
+        # EXTENSION = 0
+        # CC = util.generate_ccrc(self.Socket.getsockname[0],self.Socket.getsockname[1]) # 不同客户端设置相应端口ccrc的值
+        # MARKER = 0  # 对于非最后一包的帧数据，这里会是0，最后一包会设置为1
+        # PT = 26     # JPEG类型可用26作为payload type
+        # SSRC = 12345 # 任意固定值或随机值都可
+
+        # seqnum = 0  # 从0开始序号，每发送一包递增
+
+        # MAX_PAYLOAD_SIZE = 1450
+
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
@@ -166,8 +182,36 @@ class ConferenceClient:
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
             # video_data = b"VIDEO" + send_data.tobytes()
             video_data = send_data.tobytes()
-            self.Socket.sendto(video_data, addr)
+            
+            # # 为当前帧生成时间戳用来标识帧的时序
+            # timestamp = int(time())
 
+            # # Divide video_data into serveral packets
+            # packets = [video_data[i:i+MAX_PAYLOAD_SIZE] for i in range(0, len(video_data), MAX_PAYLOAD_SIZE)]
+
+            # # Send RTP packets, mark the marker of the last packet as 1
+            # for i, payload in enumerate(packets):
+            #     rtp_packet = RtpPacket.RtpPacket()
+            #     if i == len(packets) - 1:
+            #         MARKER = 1
+            #     else:
+            #         MARKER = 0
+            #     rtp_packet.encode(
+            #         version=VERSION,
+            #         padding=PADDING,
+            #         extension=EXTENSION,
+            #         cc=CC,
+            #         seqnum=seqnum,
+            #         marker=MARKER,
+            #         pt=PT,
+            #         ssrc=SSRC,
+            #         timestamp=timestamp,
+            #         payload=payload
+            #     )
+            #     packet_bytes = rtp_packet.getPacket()
+            #     self.Socket.sendto(packet_bytes, addr)
+            #     seqnum = (seqnum + 1) % 65536
+            self.Socket.sendto(video_data, addr)
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
