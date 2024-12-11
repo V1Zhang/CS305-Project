@@ -11,7 +11,7 @@ import util
 import pyaudio
 import numpy as np
 import wave
-from rtp import RTP,Extension,PayloadType
+# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
 
@@ -104,7 +104,7 @@ class ConferenceClient:
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
 
-    def receive_text_message(self):
+    def receive_message(self):
         while self.is_working:
             try:
                 data, server_address = self.Socket.recvfrom(921600)
@@ -174,8 +174,8 @@ class ConferenceClient:
             img_tk = ImageTk.PhotoImage(img_pil)
 
             # Update the Tkinter label with the new image
-            self.video_label.config(image=img_tk)
-            self.video_label.image = img_tk
+            # self.video_label.config(image=img_tk)
+            # self.video_label.image = img_tk
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -292,7 +292,7 @@ class ConferenceClient:
         if not self.conference_id:
             conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
             if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+                host_thread = threading.Thread(target=self.receive_message, daemon=True)
                 host_thread.start()
                 self.threads['host'] = host_thread
                 self.update_status(f"On Meeting {conference_id}")
@@ -323,7 +323,7 @@ class ConferenceClient:
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
-            guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+            guest_thread = threading.Thread(target=self.receive_message, daemon=True)
             guest_thread.start()
         else:
             messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
