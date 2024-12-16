@@ -6,6 +6,7 @@ import threading
 import struct
 import config
 import matplotlib.pyplot as plt
+import RtpPacket
 
 
 class ConferenceServer:
@@ -169,8 +170,7 @@ class ConferenceServer:
                         port_bytes = struct.pack('>H', self.video_rtp_port)
                         packet = header_bytes + port_bytes + data
                     else:
-                        continue
-                
+                        continue          
                     transport.sendto(packet, client)
                     print(f"{data_type.capitalize()} RTP packets are sent to {client}")
                 except Exception as e:
@@ -266,7 +266,10 @@ class RTPProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
         # self.server.add_client(addr)
         if self.data_type == 'video':
-            self.server.handle_video_frame(data)
+            rtp_packet = RtpPacket.RtpPacket()
+            rtp_packet.decode(data)
+            video_data = rtp_packet.getPayload()
+            self.server.handle_video_frame(video_data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':

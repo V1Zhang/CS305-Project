@@ -37,7 +37,7 @@ class ConferenceClient:
         # self.quic_config = QuicConfiguration(is_client=True)
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        self.Socket.bind(('0.0.0.0', 0))
+        self.Socket.bind((config.CLIENT_IP, 0))
 
         # GUI setup
         self.window = tk.Tk()
@@ -77,7 +77,7 @@ class ConferenceClient:
         self.cap = None
         self.video_thread = None
         self.video_running = False
-        # ausio part
+        # audio part
         self.P = None
         self.audio_thread = None
         self.audio_running = False
@@ -87,6 +87,7 @@ class ConferenceClient:
         self.video_queue = queue.Queue()
         self.root = self.window  # Tkinter 主窗口引用
         self.root.after(100, self.process_video_queue)
+        self.seqnum = 0 # use to indicate the frame number
 
 
     def update_status(self, status):
@@ -119,7 +120,7 @@ class ConferenceClient:
                         # self.receive_audio_stream(payload)
                         pass
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload, server_address)
+                        self.receive_video_stream(payload)
                 else:
                     header, port, payload = util.decode_message(data)
                     self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
@@ -163,15 +164,16 @@ class ConferenceClient:
         addr = (config.SERVER_IP, self.conference_video_port)
 
         # RTP Packet Infomation
-        # VERSION = 2
-        # PADDING = 0
-        # EXTENSION = 0
-        # CC = util.generate_ccrc(self.Socket.getsockname[0],self.Socket.getsockname[1]) # 不同客户端设置相应端口ccrc的值
-        # MARKER = 0  # 对于非最后一包的帧数据，这里会是0，最后一包会设置为1
-        # PT = 26     # JPEG类型可用26作为payload type
-        # SSRC = 12345 # 任意固定值或随机值都可
+        VERSION = 2
+        PADDING = 0
+        EXTENSION = 0
+        CC = 0
+        MARKER = 0  # 对于非最后一包的帧数据，这里会是0，最后一包会设置为1
+        PT = 26     # JPEG类型可用26作为payload type
+        SSRC = 12345 # 任意固定值或随机值都可
 
-        # seqnum = 0  # 从0开始序号，每发送一包递增
+        
+        seqnum = 0  # 从0开始序号，每发送一包递增
 
         # MAX_PAYLOAD_SIZE = 1450
 
@@ -180,38 +182,27 @@ class ConferenceClient:
             img = cv2.flip(img, 1)
 
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            # video_data = b"VIDEO" + send_data.tobytes()
             video_data = send_data.tobytes()
-            
-            # # 为当前帧生成时间戳用来标识帧的时序
-            # timestamp = int(time())
-
-            # # Divide video_data into serveral packets
-            # packets = [video_data[i:i+MAX_PAYLOAD_SIZE] for i in range(0, len(video_data), MAX_PAYLOAD_SIZE)]
-
-            # # Send RTP packets, mark the marker of the last packet as 1
-            # for i, payload in enumerate(packets):
-            #     rtp_packet = RtpPacket.RtpPacket()
-            #     if i == len(packets) - 1:
-            #         MARKER = 1
-            #     else:
-            #         MARKER = 0
-            #     rtp_packet.encode(
-            #         version=VERSION,
-            #         padding=PADDING,
-            #         extension=EXTENSION,
-            #         cc=CC,
-            #         seqnum=seqnum,
-            #         marker=MARKER,
-            #         pt=PT,
-            #         ssrc=SSRC,
-            #         timestamp=timestamp,
-            #         payload=payload
-            #     )
-            #     packet_bytes = rtp_packet.getPacket()
-            #     self.Socket.sendto(packet_bytes, addr)
-            #     seqnum = (seqnum + 1) % 65536
-            self.Socket.sendto(video_data, addr)
+            # Use RTP to wrappe the video data
+            timestamp = int(time())
+            rtp_packet = RtpPacket.RtpPacket()
+            rtp_packet.encode(
+                version=VERSION,
+                padding=PADDING,
+                extension=EXTENSION,
+                cc=CC,
+                seqnum=seqnum,
+                marker=MARKER,
+                pt=PT,
+                ssrc=SSRC,
+                timestamp=timestamp,
+                payload=video_data,
+                client_address=self.Socket.getsockname()[0],
+                client_port=self.Socket.getsockname()[1]
+            )
+            packet_bytes = rtp_packet.getPacket()
+            seqnum = (seqnum + 1) % 65536
+            self.Socket.sendto(packet_bytes, addr)
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
@@ -228,14 +219,24 @@ class ConferenceClient:
         self.cap.release()
         self.video_label.config(image='')  # Clear the image in the Tkinter label
 
-    def receive_video_stream(self, video_data, client_address):
+    def receive_video_stream(self, video_data):
         """
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
         # TODO: 关闭视频流传输会让画面消失
-        print("Receive video stream.")
-        self.video_queue.put((video_data, client_address))
+        # Decode the received rtp packet
+        rtp_packet = RtpPacket.RtpPacket()
+        try:
+            rtp_packet.decode(video_data)
+        except ValueError as e:
+            print(f"Error decoding RTP packet: {e}")
+            return
+        sender_client_address = rtp_packet.getClientAddressPort()
+        seqnum = rtp_packet.seqNum()
+        payload = rtp_packet.getPayload()
+        print(f"Receive video stream from {sender_client_address}, the sequence number is {seqnum}.")
+        self.video_queue.put((payload, sender_client_address))
 
     def process_video_queue(self):
         """
@@ -417,4 +418,5 @@ class ConferenceClient:
 
 if __name__ == '__main__':
     client1 = ConferenceClient()
+    print(client1.Socket.getsockname())
     client1.start()
