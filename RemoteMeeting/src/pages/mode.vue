@@ -11,8 +11,8 @@
         <img src="../assets/icon/sport.svg" alt="sport icon" class="sport-icon">
         Start Training Now!
       </div>
-      <div class="action-list" v-if="!videoVisible">
-        <div v-for="action in actions" style="display: flex; justify-content: space-between; align-items: center;">
+      <div class="action-list">
+        <div v-for="action in actions" :key="action.id" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="action-item"
                :key="action.id"
                :data-id="action.id"
@@ -32,8 +32,6 @@
 </template>
 
 <script>
-import img1 from '../assets/img/foream_plank.png'
-import img5 from '../assets/img/left_right_bridge.png'
 import {useMainStore} from '../store/data.ts';
 import vHeader from '../components/header.vue';
 
@@ -64,42 +62,19 @@ export default {
         {
           id: 1,
           name: ' Create Meeting',
-          imageUrl: img1
         },
         {
           id: 2,
           name: ' Join Meeting',
-          imageUrl: img5
         },
       ]
     }
   },
   created() {
-    this.updateSentence();
+    // this.updateSentence();
     setInterval(this.updateSentence, 5000);
   },
   methods: {
-    getVideoSrcById(videoId) {
-      const videoMap = {
-        'Foream Plank': video1,
-        'Sumo Glute Bridge': video2
-      };
-      return videoMap[videoId] || '';
-    },
-    showVideo() {
-      this.videoVisible = true;
-      this.$nextTick(() => {
-        this.$refs.video.play();
-      });
-    },
-    closeVideo() {
-      this.videoVisible = false;
-      this.$refs.video.pause();
-    },
-    updateSentence() {
-      this.currentSentence = this.sentences[this.index];
-      this.index = (this.index + 1) % this.sentences.length;
-    },
     selectAction(action) {
       this.selectedAction = action;
     },
@@ -117,16 +92,47 @@ export default {
       }
     },
     async handleActionClick(action) {
+      if (action.id === 1) {  // 如果选择了 "Create Meeting"
+      // 假设你需要从输入框中获取 conference_id，或者可以在此处动态生成一个
+        const conferenceId = prompt("Enter Conference ID:");
+        if (conferenceId) {
+          try {
+            // 发送 POST 请求到后端
+            const response = await this.$axios.post('/create_conference', { conference_id: conferenceId });
+            // 如果请求成功
+            console.log(response.data.message);
+            // 可以在这里处理成功后的逻辑，例如跳转到会议页面
+            this.$router.push(`/conference/${conferenceId}`);
+          } catch (error) {
+            // 如果请求失败
+            console.error("Error creating conference:", error.response.data.error);
+          }
+        } else {
+          alert("Please enter a valid conference ID.");
+        }
+      } else if (action.id === 2) {
+        const conferenceId = prompt("Enter Conference ID to join:");
+        if (conferenceId) {
+          try {
+            // 发送 POST 请求到后端的 '/join_conference' 路由
+            const response = await this.$axios.post('/join_conference', { conference_id: conferenceId });
+            console.log(response.data.message);
+            this.$router.push(`/conference/${conferenceId}`);
+          } catch (error) {
+            console.error("Error joining conference:", error.response.data.error);
+          }
+        } else {
+          alert("Please enter a valid conference ID.");
+        }
+      }
+
+
       console.log(`Selected action: ${action.name}`);
       mainStore.update({text: action.id, name: action.name});
       await new Promise(resolve => setTimeout(resolve, 500));
       this.$router.push('/interaction');
     },
-    handleActionVideoClick(action) {
-      console.log(`Selected action: ${action.name}`);
-      this.videoSrc = this.getVideoSrcById(action.name);
-      this.showVideo();
-    }
+    
   }
 }
 </script>
