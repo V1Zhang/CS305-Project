@@ -44,10 +44,7 @@ class ConferenceServer:
                                         rate=44100,
                                         output=True,
                                         frames_per_buffer=2048)
-        
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
-        self.im_display = None
+    
         
 
 
@@ -151,13 +148,12 @@ class ConferenceServer:
         """
         Forward RTP data to all clients except the sender.
         """
-        original_data = data
     
         for client in self.clients_info:
+            sender_ip, sender_port = sender_address
+            sender_port_bytes = str(sender_port).encode()
             if client != sender_address:
                 try:
-                # 每次发送前都从original_data开始构造新包
-                    data = original_data
                     if data_type == 'audio':
                         transport = self.audio_transport
                         header_bytes = "AUDIO".encode()
@@ -167,12 +163,13 @@ class ConferenceServer:
                         transport = self.video_transport
                         header_bytes = "VIDEO".encode()
                         port_bytes = struct.pack('>H', self.video_rtp_port)
-                        packet = header_bytes + port_bytes + data
+                        print(sender_port_bytes)
+                        packet = header_bytes +sender_port_bytes+ port_bytes + data
                     else:
                         continue
                 
                     transport.sendto(packet, client)
-                    print(f"{data_type.capitalize()} RTP packets are sent to {client}")
+                    # print(f"{data_type.capitalize()} RTP packets are sent to {client}")
                 except Exception as e:
                     print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
 
@@ -264,9 +261,10 @@ class RTPProtocol(asyncio.DatagramProtocol):
         print(f"{self.data_type.capitalize()} RTPProtocol has been established.")
 
     def datagram_received(self, data, addr):
+        # print(f"received data from {addr}")
         # self.server.add_client(addr)
         if self.data_type == 'video':
-            self.server.handle_video_frame(data)
+            # self.server.handle_video_frame(data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
@@ -297,8 +295,8 @@ class MainServer:
         self.P=pyaudio.PyAudio()
         self.audio_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
         print('The server is ready to receive')
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
+        # plt.ion()
+        # self.fig, self.ax = plt.subplots()
         # while True:
         #     connectionSocket, clientAddress = self.serverSocket.accept()
         #     client_thread = threading.Thread(target=handle_client, args=(connectionSocket, clientAddress))
@@ -416,11 +414,6 @@ class MainServer:
                 elif header == "VIDEO":   
                     # 解码接收到的图像数据
                     frame_data = np.frombuffer(payload, dtype='uint8')
-                    img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        # 在图像上显示“server”字样
-                        cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                        cv2.imshow('server', img)
                 elif header == "AUDIO":
                     self.audio_stream.write(payload)
                     print("Audio data received .")

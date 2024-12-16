@@ -11,7 +11,7 @@ import util,config
 import pyaudio
 import numpy as np
 import wave
-from rtp import RTP,Extension,PayloadType
+# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
 from time import time
@@ -87,6 +87,7 @@ class ConferenceClient:
         self.video_queue = queue.Queue()
         self.root = self.window  # Tkinter 主窗口引用
         self.root.after(100, self.process_video_queue)
+        self.image_path = "Client/image.jpg"
 
 
     def update_status(self, status):
@@ -119,7 +120,9 @@ class ConferenceClient:
                         # self.receive_audio_stream(payload)
                         pass
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload, server_address)
+                        sender_port= data[5:10]
+                        payload = data[12:]
+                        self.receive_video_stream(payload, sender_port)
                 else:
                     header, port, payload = util.decode_message(data)
                     self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
@@ -178,39 +181,14 @@ class ConferenceClient:
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
+            # img = cv2.imread(self.image_path)
+            if img is None:
+                print(f"Error: Unable to load image at {self.image_path}")
+                return
 
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
             # video_data = b"VIDEO" + send_data.tobytes()
             video_data = send_data.tobytes()
-            
-            # # 为当前帧生成时间戳用来标识帧的时序
-            # timestamp = int(time())
-
-            # # Divide video_data into serveral packets
-            # packets = [video_data[i:i+MAX_PAYLOAD_SIZE] for i in range(0, len(video_data), MAX_PAYLOAD_SIZE)]
-
-            # # Send RTP packets, mark the marker of the last packet as 1
-            # for i, payload in enumerate(packets):
-            #     rtp_packet = RtpPacket.RtpPacket()
-            #     if i == len(packets) - 1:
-            #         MARKER = 1
-            #     else:
-            #         MARKER = 0
-            #     rtp_packet.encode(
-            #         version=VERSION,
-            #         padding=PADDING,
-            #         extension=EXTENSION,
-            #         cc=CC,
-            #         seqnum=seqnum,
-            #         marker=MARKER,
-            #         pt=PT,
-            #         ssrc=SSRC,
-            #         timestamp=timestamp,
-            #         payload=payload
-            #     )
-            #     packet_bytes = rtp_packet.getPacket()
-            #     self.Socket.sendto(packet_bytes, addr)
-            #     seqnum = (seqnum + 1) % 65536
             self.Socket.sendto(video_data, addr)
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -218,8 +196,8 @@ class ConferenceClient:
             img_tk = ImageTk.PhotoImage(img_pil)
 
             # Update the Tkinter label with the new image
-            self.video_label.config(image=img_tk)
-            self.video_label.image = img_tk
+            # self.video_label.config(image=img_tk)
+            # self.video_label.image = img_tk
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -233,7 +211,7 @@ class ConferenceClient:
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
-        # TODO: 关闭视频流传输会让画面消失
+        # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
         print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
@@ -262,7 +240,7 @@ class ConferenceClient:
                 self.other_video_labels[client_address].image = img_tk
 
         # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
         """
