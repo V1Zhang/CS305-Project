@@ -45,6 +45,14 @@ class ConferenceServer:
                                         rate=44100,
                                         output=True,
                                         frames_per_buffer=2048)
+        self.audio_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
+        self.audio_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
+        self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
+        self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
+
+        self.audio_buffer = {} # client_address: AudioSegment
+        self.audio_mixer_task = None
+
     
         
 
