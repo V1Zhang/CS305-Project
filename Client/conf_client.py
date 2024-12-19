@@ -37,7 +37,7 @@ class ConferenceClient:
         # self.quic_config = QuicConfiguration(is_client=True)
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        self.Socket.bind((config.CLIENT_IP, 0))
+        self.Socket.bind(('0.0.0.0', 0))
 
         # GUI setup
         self.window = tk.Tk()
@@ -205,7 +205,7 @@ class ConferenceClient:
         self.cap.release()
         self.video_label.config(image='')  # Clear the image in the Tkinter label
 
-    def receive_video_stream(self, video_data):
+    def receive_video_stream(self, video_data,client_address):
         """
         Receive video stream from other clients and enqueue it for GUI update.
         """
@@ -238,7 +238,6 @@ class ConferenceClient:
                 self.other_video_labels[client_address].config(image=img_tk)
                 self.other_video_labels[client_address].image = img_tk
 
-        # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
         self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
