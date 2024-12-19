@@ -268,7 +268,8 @@ class RTPProtocol(asyncio.DatagramProtocol):
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
-            self.server.handle_audio_data(data)
+            # self.server.handle_audio_data(data)
+            pass
         # TODO:
         self.server.forward_rtp_data(data, addr, self.data_type)
 
