@@ -143,35 +143,40 @@ class ConferenceServer:
             pass
         finally:
             self.close()
-        
-    def forward_rtp_data(self, data, sender_address, data_type):
+
+    async def forward_rtp_data_task(self,client, data, sender_address, data_type):
         """
         Forward RTP data to all clients except the sender.
         """
-    
+        # TODO:这里只把sender_port加入到报头，没有考虑ip 
+        sender_ip, sender_port = sender_address
+        sender_port_bytes = str(sender_port).encode()
+        try:
+            if data_type == 'audio':
+                transport = self.audio_transport
+                header_bytes = "AUDIO".encode()
+                port_bytes = struct.pack('>H', self.audio_rtp_port)
+                packet = header_bytes + port_bytes + data
+            elif data_type == 'video':
+                transport = self.video_transport
+                header_bytes = "VIDEO".encode()
+                port_bytes = struct.pack('>H', self.video_rtp_port)
+                print(sender_port_bytes)
+                packet = header_bytes +sender_port_bytes+ port_bytes + data
+            transport.sendto(packet, client)
+            # print(f"{data_type.capitalize()} RTP packets are sent to {client}")
+        except Exception as e:
+            print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
+
+
+        
+    def forward_rtp_data(self, data, sender_address, data_type):
+        tasks = []
         for client in self.clients_info:
-            sender_ip, sender_port = sender_address
-            sender_port_bytes = str(sender_port).encode()
             if client != sender_address:
-                try:
-                    if data_type == 'audio':
-                        transport = self.audio_transport
-                        header_bytes = "AUDIO".encode()
-                        port_bytes = struct.pack('>H', self.audio_rtp_port)
-                        packet = header_bytes + port_bytes + data
-                    elif data_type == 'video':
-                        transport = self.video_transport
-                        header_bytes = "VIDEO".encode()
-                        port_bytes = struct.pack('>H', self.video_rtp_port)
-                        print(sender_port_bytes)
-                        packet = header_bytes +sender_port_bytes+ port_bytes + data
-                    else:
-                        continue
-                
-                    transport.sendto(packet, client)
-                    # print(f"{data_type.capitalize()} RTP packets are sent to {client}")
-                except Exception as e:
-                    print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
+                tasks.append(asyncio.create_task(self.forward_rtp_data_task(client, data, sender_address, data_type)))
+        threads = []
+
 
     def handle_video_frame(self, data):
         """
@@ -268,7 +273,8 @@ class RTPProtocol(asyncio.DatagramProtocol):
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
-            self.server.handle_audio_data(data)
+            # self.server.handle_audio_data(data)
+            pass
         # TODO:
         self.server.forward_rtp_data(data, addr, self.data_type)
 

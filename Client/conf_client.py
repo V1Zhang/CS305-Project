@@ -117,7 +117,7 @@ class ConferenceClient:
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
                     if header == "AUDIO":
-                        # self.receive_audio_stream(payload)
+                        self.receive_audio_stream(payload)
                         pass
                     elif header == "VIDEO":
                         sender_port= data[5:10]
