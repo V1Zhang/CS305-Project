@@ -3,8 +3,7 @@ HELP = 'Create         : create an conference\n' \
        'Quit           : quit an on-going conference\n' \
        'Cancel         : cancel your on-going conference (only the manager)\n\n'
 
-SERVER_IP = '127.0.0.1'
-CLIENT_IP = '127.0.0.1'
+SERVER_IP = '10.32.98.215'
 MAIN_SERVER_PORT = 7000
 TIMEOUT_SERVER = 5
 # DGRAM_SIZE = 1500  # UDP

@@ -11,7 +11,7 @@ import util,config
 import pyaudio
 import numpy as np
 import wave
-from rtp import RTP,Extension,PayloadType
+# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
 from time import time
@@ -117,10 +117,11 @@ class ConferenceClient:
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
                     if header == "AUDIO":
-                        # self.receive_audio_stream(payload)
-                        pass
+                        self.receive_audio_stream(payload)
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload)
+                        sender_port= data[5:10]
+                        payload = data[12:]
+                        self.receive_video_stream(payload, sender_port)
                 else:
                     header, port, payload = util.decode_message(data)
                     self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
@@ -180,37 +181,22 @@ class ConferenceClient:
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
+            # img = cv2.imread(self.image_path)
+            if img is None:
+                print(f"Error: Unable to load image at {self.image_path}")
+                return
 
             _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
             video_data = send_data.tobytes()
-            # Use RTP to wrappe the video data
-            timestamp = int(time())
-            rtp_packet = RtpPacket.RtpPacket()
-            rtp_packet.encode(
-                version=VERSION,
-                padding=PADDING,
-                extension=EXTENSION,
-                cc=CC,
-                seqnum=seqnum,
-                marker=MARKER,
-                pt=PT,
-                ssrc=SSRC,
-                timestamp=timestamp,
-                payload=video_data,
-                client_address=self.Socket.getsockname()[0],
-                client_port=self.Socket.getsockname()[1]
-            )
-            packet_bytes = rtp_packet.getPacket()
-            seqnum = (seqnum + 1) % 65536
-            self.Socket.sendto(packet_bytes, addr)
+            self.Socket.sendto(video_data, addr)
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
             img_tk = ImageTk.PhotoImage(img_pil)
 
             # Update the Tkinter label with the new image
-            self.video_label.config(image=img_tk)
-            self.video_label.image = img_tk
+            # self.video_label.config(image=img_tk)
+            # self.video_label.image = img_tk
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -224,19 +210,9 @@ class ConferenceClient:
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
-        # TODO: 关闭视频流传输会让画面消失
-        # Decode the received rtp packet
-        rtp_packet = RtpPacket.RtpPacket()
-        try:
-            rtp_packet.decode(video_data)
-        except ValueError as e:
-            print(f"Error decoding RTP packet: {e}")
-            return
-        sender_client_address = rtp_packet.getClientAddressPort()
-        seqnum = rtp_packet.seqNum()
-        payload = rtp_packet.getPayload()
-        print(f"Receive video stream from {sender_client_address}, the sequence number is {seqnum}.")
-        self.video_queue.put((payload, sender_client_address))
+        # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
+        print("Receive video stream.")
+        self.video_queue.put((video_data, client_address))
 
     def process_video_queue(self):
         """
@@ -263,7 +239,7 @@ class ConferenceClient:
                 self.other_video_labels[client_address].image = img_tk
 
         # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
         """
