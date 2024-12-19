@@ -145,33 +145,42 @@ class ConferenceServer:
         finally:
             self.close()
         
-    def forward_rtp_data(self, data, sender_address, data_type):
+    async def send_rtp_to_client(self, data, client, data_type, sender_address):
         """
-        Forward RTP data to all clients except the sender.
+        Forward RTP data to a client except the sender asyncrounously.
         """
-    
-        for client in self.clients_info:
+
+        try:
             sender_ip, sender_port = sender_address
             sender_port_bytes = str(sender_port).encode()
-            if client != sender_address:
-                try:
-                    if data_type == 'audio':
-                        transport = self.audio_transport
-                        header_bytes = "AUDIO".encode()
-                        port_bytes = struct.pack('>H', self.audio_rtp_port)
-                        packet = header_bytes + port_bytes + data
-                    elif data_type == 'video':
-                        transport = self.video_transport
-                        header_bytes = "VIDEO".encode()
-                        port_bytes = struct.pack('>H', self.video_rtp_port)
-                        print(sender_port_bytes)
-                        packet = header_bytes +sender_port_bytes+ port_bytes + data
-                    else:
-                        continue          
-                    transport.sendto(packet, client)
-                    # print(f"{data_type.capitalize()} RTP packets are sent to {client}")
-                except Exception as e:
+            if data_type == 'audio':
+                transport = self.audio_transport
+                header_bytes = "AUDIO".encode()
+                port_bytes = struct.pack('>H', self.audio_rtp_port)
+                packet = header_bytes + port_bytes + data
+            elif data_type == 'video':
+                transport = self.video_transport
+                header_bytes = "VIDEO".encode()
+                port_bytes = struct.pack('>H', self.video_rtp_port)
+                print(sender_port_bytes)
+                packet = header_bytes + sender_port_bytes+ port_bytes + data
+            else:
+                return          
+            transport.sendto(packet, client)
+        except Exception as e:
                     print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
+
+
+    async def forward_rtp_data(self,data,sender_address,data_type):
+        """
+        Forward RTP data to all clients except the sender
+        """
+        tasks = []
+        for client in self.clients_info:
+            if client != sender_address:
+                tasks.append(self.send_rtp_to_client(data, client, data_type, sender_address))
+        if tasks:
+            await asyncio.gather(*tasks)
 
     def handle_video_frame(self, data):
         """
@@ -261,16 +270,13 @@ class RTPProtocol(asyncio.DatagramProtocol):
         print(f"{self.data_type.capitalize()} RTPProtocol has been established.")
 
     def datagram_received(self, data, addr):
-        # print(f"received data from {addr}")
-        # self.server.add_client(addr)
+        asyncio.create_task(self.server.forward_rtp_data(data,addr,self.data_type))
         if self.data_type == 'video':
             # self.server.handle_video_frame(data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
-        # TODO:
-        self.server.forward_rtp_data(data, addr, self.data_type)
 
     def error_received(self, exc):
         print(f"{self.data_type.capitalize()} RTPProtocol 接收到错误: {exc}")

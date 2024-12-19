@@ -86,8 +86,9 @@ class ConferenceClient:
         self.other_video_labels = {}
         self.video_queue = queue.Queue()
         self.root = self.window  # Tkinter 主窗口引用
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
         self.seqnum = 0 # use to indicate the frame number
+        self.image_path = "Client/image.jpg"
 
 
     def update_status(self, status):
@@ -160,23 +161,10 @@ class ConferenceClient:
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
         addr = (config.SERVER_IP, self.conference_video_port)
 
-        # RTP Packet Infomation
-        VERSION = 2
-        PADDING = 0
-        EXTENSION = 0
-        CC = 0
-        MARKER = 0  # 对于非最后一包的帧数据，这里会是0，最后一包会设置为1
-        PT = 26     # JPEG类型可用26作为payload type
-        SSRC = 12345 # 任意固定值或随机值都可
-
-        
-        seqnum = 0  # 从0开始序号，每发送一包递增
-
-        # MAX_PAYLOAD_SIZE = 1450
 
         while self.video_running:
             _, img = self.cap.read()
@@ -185,18 +173,13 @@ class ConferenceClient:
             if img is None:
                 print(f"Error: Unable to load image at {self.image_path}")
                 return
-
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
+            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
             video_data = send_data.tobytes()
             self.Socket.sendto(video_data, addr)
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
             img_tk = ImageTk.PhotoImage(img_pil)
-
-            # Update the Tkinter label with the new image
-            # self.video_label.config(image=img_tk)
-            # self.video_label.image = img_tk
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
