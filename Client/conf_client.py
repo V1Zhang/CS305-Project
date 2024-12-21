@@ -7,13 +7,18 @@ from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-import util
+import util,config
 import pyaudio
 import numpy as np
 import wave
 # from rtp import RTP,Extension,PayloadType
 import struct
 import queue
+from time import time
+import RtpPacket
+import pydub
+import socketio
+import base64
 
 # TODO: 文字传输改为TCP
 
@@ -75,7 +80,7 @@ class ConferenceClient:
         self.cap = None
         self.video_thread = None
         self.video_running = False
-        # ausio part
+        # audio part
         self.P = None
         self.audio_thread = None
         self.audio_running = False
@@ -84,7 +89,17 @@ class ConferenceClient:
         self.other_video_labels = {}
         self.video_queue = queue.Queue()
         self.root = self.window  # Tkinter 主窗口引用
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
+        self.seqnum = 0 # use to indicate the frame number
+        self.image_path = "Client/image.jpg"
+
+        # 使用socketio
+        self.sio = socketio.Client()
+        self.register_socketio_events()
+        # Connect to the Socket.IO server
+        
+        
+        
 
 
     def update_status(self, status):
@@ -98,7 +113,7 @@ class ConferenceClient:
         if message:
             try:
                 data = f"TEXT {message}".encode()
-                self.Socket.sendto(data, ('127.0.0.1', self.conference_port))
+                self.Socket.sendto(data, (config.SERVER_IP, self.conference_port))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
                 self.message_entry.delete(0, tk.END)
             except Exception as e:
@@ -114,10 +129,11 @@ class ConferenceClient:
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
                     if header == "AUDIO":
-                        # self.receive_audio_stream(payload)
-                        pass
+                        self.receive_audio_stream(payload)
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload, server_address)
+                        sender_port= data[5:10]
+                        payload = data[12:]
+                        self.receive_video_stream(payload, sender_port)
                 else:
                     header, port, payload = util.decode_message(data)
                     self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
@@ -135,6 +151,8 @@ class ConferenceClient:
                     content = payload.split(':')
                     status_code, conference_id = content[0], content[1]
                     if status_code == "OK":
+                        IP= 'http://'+config.SERVER_IP+ ":" + str(config.MAIN_SERVER_PORT)
+                        self.sio.connect(IP)
                         if self.conference_port == None:
                             self.conference_port = port
                         self.join_success.set()
@@ -155,41 +173,61 @@ class ConferenceClient:
                 break
 
     def send_video_stream(self):
+        # self.cap = cv2.VideoCapture(0)
+        # self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        # self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+        # addr = (config.SERVER_IP, self.conference_video_port)
+
+        # while self.video_running:
+        #     _, img = self.cap.read()
+        #     img = cv2.flip(img, 1)
+        #     # img = cv2.imread(self.image_path)
+        #     if img is None:
+        #         print(f"Error: Unable to load image at {self.image_path}")
+        #         return
+            
+        #     _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+        #     # _ , send_data = cv2.imencode('.h264', img)
+        #     video_data = send_data.tobytes()
+        #     self.Socket.sendto(video_data, addr)
+        #     self.Socket.sendto(video_data, addr)
+        #     self.Socket.sendto(video_data, addr)
+        #     # Convert OpenCV image to PIL image for Tkinter
+        #     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #     img_pil = Image.fromarray(img_rgb)
+        #     img_tk = ImageTk.PhotoImage(img_pil)
+
+        #     if cv2.waitKey(1) & 0xFF == ord('q'):
+        #         break
+
+        # # When video stops, release the capture and clear the video label
+        # self.cap.release()
+        # self.video_label.config(image='')  # Clear the image in the Tkinter label
+
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        addr = ('127.0.0.1', self.conference_video_port)
+        self.video_running = True
+
         while self.video_running:
             _, img = self.cap.read()
+            # img = cv2.imread(self.image_path)
             img = cv2.flip(img, 1)
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
 
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            # video_data = b"VIDEO" + send_data.tobytes()
-            video_data = send_data.tobytes()
-            self.Socket.sendto(video_data, addr)
+            # Send video frame via Socket.IO
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid})
 
-            # Convert OpenCV image to PIL image for Tkinter
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img_pil = Image.fromarray(img_rgb)
-            img_tk = ImageTk.PhotoImage(img_pil)
-
-            # Update the Tkinter label with the new image
-            # self.video_label.config(image=img_tk)
-            # self.video_label.image = img_tk
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        # When video stops, release the capture and clear the video label
         self.cap.release()
-        self.video_label.config(image='')  # Clear the image in the Tkinter label
+        cv2.destroyAllWindows()
 
-    def receive_video_stream(self, video_data, client_address):
+    def receive_video_stream(self, video_data,client_address):
         """
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
-        # TODO: 关闭视频流传输会让画面消失
+        # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
         print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
@@ -217,8 +255,7 @@ class ConferenceClient:
                 self.other_video_labels[client_address].config(image=img_tk)
                 self.other_video_labels[client_address].image = img_tk
 
-        # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
         """
@@ -256,7 +293,7 @@ class ConferenceClient:
         self.P=pyaudio.PyAudio()
         audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
         # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
-        addr = ('127.0.0.1', self.conference_audio_port)
+        addr = (config.SERVER_IP, self.conference_audio_port)
 
         while self.audio_running:
             audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
@@ -302,8 +339,10 @@ class ConferenceClient:
                 message = f"CREAT{conference_id}"
                 try:
                     data = message.encode()
-                    self.Socket.sendto(data, ('127.0.0.1', 7000))
+                    self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     self.text_output.insert(tk.END, f"Sent: {message}\n")
+                    IP= 'http://'+config.SERVER_IP+ ":" + str(config.MAIN_SERVER_PORT)
+                    self.sio.connect(IP)
                 except Exception as e:
                     messagebox.showerror("Error", f"Error sending message: {e}")
         else:
@@ -319,7 +358,7 @@ class ConferenceClient:
             message = f"JOIN {conference_id}"
             try:
                 data = message.encode()
-                self.Socket.sendto(data,('127.0.0.1',7000))
+                self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
@@ -339,7 +378,7 @@ class ConferenceClient:
         message = f"QUIT {self.conference_id}"
         try:
             data = message.encode()
-            self.Socket.sendto(data,('127.0.0.1',7000))
+            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
             self.text_output.insert(tk.END, f"Sent: {message}\n")
         except Exception as e:
             messagebox.showerror("Error", f"Error sending message: {e}")
@@ -370,7 +409,55 @@ class ConferenceClient:
             self.P.terminate()
         self.Socket.close()
         self.window.destroy()
+    
+
+    ## socketio 的方法
+    def register_socketio_events(self):
+
+        @self.sio.event
+        def connect():
+            print("Connected to server")
+        
+        @self.sio.on('client_info')
+        def handle_client_info(data):
+            for client in data:
+                if client not in self.other_video_labels:
+                    # 创建一个新的标签来显示接收到的视频
+                    video_label = tk.Label(self.window)
+                    video_label.pack(side=tk.LEFT, padx=10, pady=10)  # 可以根据需要调整布局
+                    self.other_video_labels[client] = video_label
+        
+
+        @self.sio.event
+        def disconnect():
+            print("Disconnected from server")
+
+        @self.sio.on('video_frame')
+        def handle_video_stream(data):
+            """Handle incoming video stream."""
+            # Decode video data and process
+            frame_data = base64.b64decode(data['frame'])
+            nparr = np.frombuffer(frame_data, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            sender_id = data['sender_id']  # Identify who sent the frame
+            if img is not None:
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img_pil = Image.fromarray(img_rgb)
+                img_tk = ImageTk.PhotoImage(img_pil)
+
+                # 更新对应客户端的标签
+                self.other_video_labels[sender_id].config(image=img_tk)
+                self.other_video_labels[sender_id].image = img_tk
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                self.video_running = False
+                self.sio.disconnect()
+
+    
+
+
 
 if __name__ == '__main__':
     client1 = ConferenceClient()
+    # print(client1.Socket.getsockname())
     client1.start()

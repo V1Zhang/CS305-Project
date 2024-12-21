@@ -1,6 +1,6 @@
 import sys
 from time import time
-HEADER_SIZE = 12
+HEADER_SIZE = 16 # 4 extra bytes are used to indicate the address of the sender
 
 class RtpPacket:	
 	header = bytearray(HEADER_SIZE)
@@ -8,9 +8,8 @@ class RtpPacket:
 	def __init__(self):
 		pass
 		
-	def encode(self, version, padding, extension, cc, seqnum, marker, pt, ssrc, payload):
+	def encode(self, version, padding, extension, cc, seqnum, timestamp, marker, pt, ssrc, client_address, client_port, payload):
 		"""Encode the RTP packet with header fields and payload."""
-		timestamp = int(time())
 		header = bytearray(HEADER_SIZE)
 		
 		# Fill the header bytearray with RTP header fields
@@ -26,6 +25,10 @@ class RtpPacket:
 		header[9] = ssrc >> 16 & 255
 		header[10] = ssrc >> 8 & 255
 		header[11] = ssrc & 255
+		# Encode client address and port into the last 4 bytes
+        # Assuming IPv4 address and 16-bit port
+		address_bytes = [int(b) for b in client_address.split('.')]
+		header[12:16] = bytearray(address_bytes + [client_port >> 8, client_port & 255])
 		
 		self.header = header
 		
@@ -71,3 +74,21 @@ class RtpPacket:
 	def getPacket(self):
 		"""Return RTP packet."""
 		return self.header + self.payload
+	
+	def getClientAddressPort(self):
+		"""Return the client address and port as a tuple (address, port)."""
+		address = ".".join(map(str, self.header[12:16][:4]))
+		port = (self.header[14] << 8) | self.header[15]
+		return address, port
+	
+if __name__ == "__main__":
+	# Test the encoding and decoding
+	# Example usage:
+	packet = RtpPacket()
+	packet.encode(version=2, padding=0, extension=0, cc=0, seqnum=12345, timestamp=int(time()), 
+              marker=1, pt=26, ssrc=123456, payload=b'test_payload', 
+              client_address="192.168.1.10", client_port=5004)
+
+	print(packet.getClientAddressPort())  # Output: ('192.168.1.10', 5004)
+	print(packet.getPayload())
+	print(packet.timestamp())

@@ -14,21 +14,21 @@ import struct
 
 
 # audio setting
-FORMAT = pyaudio.paInt16
-audio = pyaudio.PyAudio()
-streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
+# FORMAT = pyaudio.paInt16
+# audio = pyaudio.PyAudio()
+# streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+# streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
 
 # print warning if no available camera
-cap = cv2.VideoCapture(0)
-if cap.isOpened():
-    can_capture_camera = True
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-else:
-    can_capture_camera = False
+# cap = cv2.VideoCapture(0)
+# if cap.isOpened():
+#     can_capture_camera = True
+#     cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+#     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+# else:
+#     can_capture_camera = False
 
-my_screen_size = pyautogui.size()
+# my_screen_size = pyautogui.size()
 
 
 def resize_image_to_fit_screen(image, my_screen_size):
@@ -180,6 +180,18 @@ def decode_message(data):
     payload = data[7:].decode()
     return header, port, payload
 
+def generate_ccrc(ip, port):
+    """
+    根据客户端的 IP 和端口生成唯一的 CC/CSRC 值
+    """
+    # 将 IP 地址转为整数 (IPv4 示例)
+    ip_parts = list(map(int, ip.split('.')))
+    ip_sum = sum(ip_parts)
+    # 将 IP 和 Port 组合，生成唯一值
+    unique_ccrc = (ip_sum + port) % 65536  # 取模确保结果在 16 位范围内
+    return unique_ccrc
+
+
 
 if __name__ == "__main__":
     # Test the encoding and decoding
@@ -188,6 +200,8 @@ if __name__ == "__main__":
     
     decoded = decode_message(encoded)
     print(decoded)  # Output: ('TEXT ', 50051, 'Hello World!')
+
+    print(generate_ccrc('127.0.0.1',55222))
 
 
 
