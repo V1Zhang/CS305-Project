@@ -20,7 +20,7 @@ import random
 
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
-
+from flask_socketio import SocketIO, emit
 # TODO: 文字传输改为TCP
 
 
@@ -46,6 +46,7 @@ class ConferenceClient:
 
         # GUI setup
         self.app = Flask(__name__)
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         threading.Thread(target=self.run_flask_server, daemon=True).start()
         CORS(self.app)
         
@@ -54,6 +55,7 @@ class ConferenceClient:
         self.cap = None
         self.video_thread = None
         self.video_running = False
+        self.video_queue = queue.Queue()
         # audio part
         self.P = None
         self.audio_thread = None
@@ -68,7 +70,6 @@ class ConferenceClient:
                 data, server_address = self.Socket.recvfrom(921600)
                 # 预解码
                 header = data[:5].decode()
-                print(data)
                 if header == "AUDIO" or header == "VIDEO":
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
@@ -84,14 +85,14 @@ class ConferenceClient:
                 if header == "TEXT ":
                     if self.conference_port == None:
                         self.conference_port = port
-                    text_output = f"Received: {payload}\n"
+                    self.socketio.emit('message', {'type': 'TEXT', 'message': payload})
                 elif header == "CREAT":
                     port_message = payload.split(' ')
                     self.conference_audio_port = int(port_message[0])
                     self.conference_video_port = int(port_message[1])
-                    text_output = f"Received: {payload}\n"
+                    self.socketio.emit('message', {'type': 'CREAT', 'message': payload})
                 elif header == "JOIN ":
-                    text_output = f"Received: {payload}\n"
+                    self.socketio.emit('message', {'type': 'JOIN', 'message': payload})
                     content = payload.split(':')
                     status_code, conference_id = content[0], content[1]
                     if status_code == "OK":
@@ -100,13 +101,12 @@ class ConferenceClient:
                         self.join_success.set()
                         self.conference_id = conference_id
                         self.update_status(f"On Meeting {conference_id}")
-                        text_output = f"Joined Conference {conference_id}.\n"
                     else:
                         # messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
                         break
                     self.join_conference(conference_id)
                 elif header == "QUIT ":
-                    text_output = f"Received: {payload}\n"
+                    self.socketio.emit('message', {'type': 'QUIT', 'message': payload})
                     self.quit_conference()
                     # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
@@ -119,7 +119,7 @@ class ConferenceClient:
         @self.app.route("/")
         def index():
             return "Welcome to Remote Meeting API!"
-    
+            
         @self.app.route('/create_conference', methods=['POST'])
         def create_conference_route():
             try:
@@ -242,20 +242,7 @@ class ConferenceClient:
                     }), 200
 
 
-        @self.app.route("/get_video", methods=["GET"])
-        def get_video():
-            """
-            用于流式返回视频帧。
-            """
-            def generate():
-                while True:
-                    if self.last_frame:
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + self.last_frame + b'\r\n\r\n')
-                    else:
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + b'\r\n\r\n')
-            return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+       
         
 
     def create_conference(self):
@@ -380,38 +367,30 @@ class ConferenceClient:
                 img_pil.save(img_io, 'JPEG')
                 img_io.seek(0)
                 
-                self.last_frame = img_io.read()
-
-                
-                # # 检查是否已经为该客户端创建了视频标签
-                # if client_address not in self.other_video_labels:
-                #     # 创建一个新的标签来显示接收到的视频
-                #     video_label = tk.Label(self.window)
-                #     video_label.pack(side=tk.LEFT, padx=10, pady=10)  # 可以根据需要调整布局
-                #     self.other_video_labels[client_address] = video_label
-
-                # # 更新对应客户端的标签
-                # self.other_video_labels[client_address].config(image=img_tk)
-                # self.other_video_labels[client_address].image = img_tk
-
-        self.root.after(10, self.process_video_queue)
+                # Base64 encode the video frame for WebSocket transmission
+                base64_frame = io.BytesIO(img_io.read()).getvalue()
+            
+                # Emit the video stream to front-end
+                self.socketio.emit('video-stream', {
+                    'clientAddress': client_address,
+                    'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
+                })
 
     def receive_audio_stream(self, audio_data):
         """
         Receive audio stream from other clients and play it.
         """
         # TODO: 辨别多个client的音轨
-        if not self.P:
-            self.P = pyaudio.PyAudio()
-            self.audio_stream = self.P.open(format=pyaudio.paInt16,
-                                            channels=1,
-                                            rate=44100,
-                                            output=True,
-                                            frames_per_buffer=2048)
         try:
-            self.audio_stream.write(audio_data)
+            # Convert audio data to Base64 for WebSocket transmission
+            base64_audio = audio_data.hex()  # Convert binary to a hexadecimal string
+
+            # Emit audio stream to the front-end
+            self.socketio.emit('audio-stream', {
+                'audioFrame': base64_audio
+            })
         except Exception as e:
-            print(f"Error playing audio data: {e}")
+            print(f"Error handling audio data: {e}")
 
     
 
@@ -438,7 +417,8 @@ class ConferenceClient:
             
             
     def start(self):
-        self.app.run(host="0.0.0.0", port=7777, debug=True)
+        self.socketio.run(self.app, host="0.0.0.0", port=7777, debug=True)
+        # self.app.run(host="0.0.0.0", port=7777, debug=True)
     
     def on_closing(self):
         self.is_working = False

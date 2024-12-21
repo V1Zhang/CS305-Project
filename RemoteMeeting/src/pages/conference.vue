@@ -16,13 +16,26 @@
           </button>
         </div>
         <div class="video-container">
-          <v-video />
+          <div
+            v-for="(stream, index) in videoStreams"
+            :key="index"
+            class="video-stream-window"
+          >
+            <h3>{{ stream.clientAddress }}</h3>
+            <video
+              :ref="'video_' + index"
+              autoplay
+              playsinline
+              muted
+              class="video-element"
+            ></video>
+          </div>
         </div>
       </div>
 
       <!-- 右侧聊天区域 -->
       <div class="chat-container">
-        <div class="text-output">
+        <div class="text-output" ref="textOutput">
           <textarea v-model="textOutput" readonly class="output-textarea"></textarea>
         </div>
         <div class="message-input">
@@ -47,7 +60,7 @@
   import vHeader from '../components/header.vue';
   import vVideo from '../components/video.vue';
   import axios from 'axios';
-  
+  import io from 'socket.io-client';
 
   export default {
     components: {
@@ -55,27 +68,89 @@
       vVideo
     },
     data() {
-      return {
-        modelVideoUrl: "https://cn-hk-eq-01-10.bilivideo.com/upgcxcode/71/12/1158901271/1158901271-1-192.mp4?e=ig8euxZM2rNcNbRV7WdVhwdlhWdBhwdVhoNvNC8BqJIzNbfq9rVEuxTEnE8L5F6VnEsSTx0vkX8fqJeYTj_lta53NCM=&uipk=5&nbs=1&deadline=1721127940&gen=playurlv2&os=bcache&oi=729892153&trid=00001f4fded7121e43358d7ef7ce1f315b37T&mid=3546712159291839&platform=html5&og=cos&upsig=61932c241c510493aae8565e4a2732ea&uparams=e,uipk,nbs,deadline,gen,os,oi,trid,mid,platform,og&cdnid=68704&bvc=vod&nettype=0&bw=105459&orderid=0,1&buvid=&build=0&mobi_app=&f=T_0_0&logo=80000000",
-        videoPopUrl: '', // 初始化视频地址为空
-       
+      return {        
+        socket: null,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
+        audioContext: null, // Web Audio API AudioContext
+        audioSource: null, // Web Audio API AudioBufferSourceNode
         textOutput: "",        // 显示接收到的消息
         messageInput: "",      // 用户输入的消息
+        videoStreams: [],
       }
     },
     created() {
-     
+      this.socket = io('http://127.0.0.1:7777');
+      this.socket.on('message', (data) => {
+        this.handleIncomingMessage(data);
+      });
+      this.socket.on('video-stream', (data) => {
+        this.handleIncomingVideoStream(data);
+      });
+      this.socket.on('sudio-stream', (data) => {
+        this.handleIncomingAudioStream(data);
+      });
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
     },
     beforeDestroy() {
-      clearInterval(this.interval);
+      // 断开 WebSocket 连接
+      if (this.socket) {
+        this.socket.disconnect();
+      }
     },
     methods: {
+        handleIncomingMessage(data) {
+          if (data.type === 'TEXT') {
+            this.textOutput += `Text: ${data.message}\n`;
+          } else if (data.type === 'CREAT') {
+            this.textOutput += `Port Created: ${data.message}\n`;
+          } else if (data.type === 'JOIN') {
+            this.textOutput += `User Joined: ${data.message}\n`;
+          } else if (data.type === 'QUIT') {
+            this.textOutput += `User Quit: ${data.message}\n`;
+          } else {
+            this.textOutput += `Unknown Message: ${data.message}\n`;
+          }
+          this.$nextTick(() => {
+          const outputElement = this.$refs.textOutput; // 确保绑定了 ref="textOutput"
+          if (outputElement) {
+            outputElement.scrollTop = outputElement.scrollHeight;
+          }
+  });
+        },
+
+        handleIncomingVideoStream(data) {
+          const { clientAddress, videoFrame } = data;
+
+          // 查找是否已有该客户端的视频窗口
+          const existingStream = this.videoStreams.find(
+            (stream) => stream.clientAddress === clientAddress
+          );
+
+          if (!existingStream) {
+            // 新增一个视频窗口
+            this.videoStreams.push({
+              clientAddress,
+              videoFrame, // Base64 格式的视频帧
+            });
+          } else {
+            // 更新现有的视频帧
+            existingStream.videoFrame = videoFrame;
+          }
+        },
+    
+
+
+
+
+
+
+
+
         async quitConference() {
             try {
                 const response = await axios.post('http://127.0.0.1:7777/quit_conference', {
-                // 如果需要传递参数，可以在这里添加
                 userId: "user123", // 示例数据
                 });
 
@@ -195,7 +270,7 @@
   flex-direction: column;  /* 垂直排列按钮 */
   justify-content: flex-start;
   align-items: center;
-  width: 40%;  /* 控制视频按钮区域的宽度 */
+  width: 70%;  /* 控制视频按钮区域的宽度 */
   background-color: #f5f5f5;  /* 背景色 */
   padding: 10px;
   border-radius: 10px;
@@ -270,6 +345,7 @@
 }
 
 .text-output {
+  height: 700px;
   padding: 10px;
   background-color: #fff;
   flex: 1;
