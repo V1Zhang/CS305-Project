@@ -350,6 +350,13 @@ class ConferenceClient:
         # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
         print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
+        
+        is_sharing_screen = False
+
+
+
+        
+        
 
     def process_video_queue(self):
         """
