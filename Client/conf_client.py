@@ -7,14 +7,17 @@ from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-import util
+import util,config
 import pyaudio
 import numpy as np
 import wave
-from rtp import RTP,Extension,PayloadType
+# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
-import config
+from time import time
+import RtpPacket
+import pydub
+
 # TODO: 文字传输改为TCP
 
 class ConferenceClient:
@@ -75,7 +78,7 @@ class ConferenceClient:
         self.cap = None
         self.video_thread = None
         self.video_running = False
-        # ausio part
+        # audio part
         self.P = None
         self.audio_thread = None
         self.audio_running = False
@@ -84,7 +87,9 @@ class ConferenceClient:
         self.other_video_labels = {}
         self.video_queue = queue.Queue()
         self.root = self.window  # Tkinter 主窗口引用
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
+        self.seqnum = 0 # use to indicate the frame number
+        self.image_path = "Client/image.jpg"
 
 
     def update_status(self, status):
@@ -114,10 +119,11 @@ class ConferenceClient:
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
                     if header == "AUDIO":
-                        # self.receive_audio_stream(payload)
-                        pass
+                        self.receive_audio_stream(payload)
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload, server_address)
+                        sender_port= data[5:10]
+                        payload = data[12:]
+                        self.receive_video_stream(payload, sender_port)
                 else:
                     header, port, payload = util.decode_message(data)
                     self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
@@ -145,37 +151,39 @@ class ConferenceClient:
                         messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
                         break
                     self.join_conference(conference_id)
-                elif header == "CANCE":
+                elif header == "QUIT ":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
-                    # self.cancel_conference()
-                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
                     self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
+                elif header == "LEAVE":
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
         addr = (config.SERVER_IP, self.conference_video_port)
+
+
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
-
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            # video_data = b"VIDEO" + send_data.tobytes()
+            # img = cv2.imread(self.image_path)
+            if img is None:
+                print(f"Error: Unable to load image at {self.image_path}")
+                return
+            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
             video_data = send_data.tobytes()
             self.Socket.sendto(video_data, addr)
-
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
             img_tk = ImageTk.PhotoImage(img_pil)
-
-            # Update the Tkinter label with the new image
-            self.video_label.config(image=img_tk)
-            self.video_label.image = img_tk
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -184,12 +192,13 @@ class ConferenceClient:
         self.cap.release()
         self.video_label.config(image='')  # Clear the image in the Tkinter label
 
-    def receive_video_stream(self, video_data, client_address):
+    def receive_video_stream(self, video_data,client_address):
         """
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
-        # TODO: 关闭视频流传输会让画面消失
+        # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
+        print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
     def process_video_queue(self):
@@ -216,8 +225,7 @@ class ConferenceClient:
                 self.other_video_labels[client_address].config(image=img_tk)
                 self.other_video_labels[client_address].image = img_tk
 
-        # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
         """
@@ -286,7 +294,7 @@ class ConferenceClient:
 
 
 
-    
+
     def create_conference(self):
         if not self.conference_id:
             conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
@@ -314,7 +322,7 @@ class ConferenceClient:
             return
         conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
         if conference_id and conference_id.isdigit():
-            # TODO:后续添加密码验证
+            # 后续添加密码验证
             message = f"JOIN {conference_id}"
             try:
                 data = message.encode()
@@ -351,10 +359,6 @@ class ConferenceClient:
         self.update_status("Free")
         self.text_output.insert(tk.END, "Left the conference.\n")
 
-    def cancel_conference(self):
-        self.update_status("Free")
-        self.text_output.insert(tk.END, "Conference cancelled.\n")
-
     def start(self):
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.window.mainloop()
@@ -372,4 +376,6 @@ class ConferenceClient:
 
 if __name__ == '__main__':
     client1 = ConferenceClient()
+    print(client1.Socket.getsockname())
     client1.start()
+

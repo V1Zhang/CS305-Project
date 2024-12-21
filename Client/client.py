@@ -1,21 +1,28 @@
+import io
 import socket
 import threading
 import cv2
-import tkinter as tk
-from tkinter import messagebox, simpledialog
-from PIL import Image, ImageTk  # To convert OpenCV images to Tkinter images
+from PIL import Image
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-import util
+import util,config
 import pyaudio
 import numpy as np
 import wave
-from rtp import RTP,Extension,PayloadType
+# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
-import config
+from time import time
+import RtpPacket
+import pydub
+import random
+
+from flask import Flask, Response, request, jsonify
+from flask_cors import CORS
+
 # TODO: 文字传输改为TCP
+
 
 class ConferenceClient:
     def __init__(self):
@@ -38,71 +45,22 @@ class ConferenceClient:
         self.Socket.bind(('0.0.0.0', 0))
 
         # GUI setup
-        self.window = tk.Tk()
-        self.window.title("Conference Client")
-
-        self.status_label = tk.Label(self.window, text="Status: Free", font=("Arial", 12))
-        self.status_label.pack()
-
-        self.message_entry = tk.Entry(self.window, width=50)
-        self.message_entry.pack()
-
-        self.send_button = tk.Button(self.window, text="Send Message", command=self.send_text_message)
-        self.send_button.pack()
-
-        self.text_output = tk.Text(self.window, height=15, width=50)
-        self.text_output.pack()
-
-        self.video_button = tk.Button(self.window, text="Start Video Stream", command=self.toggle_video_stream)
-        self.video_button.pack()
-
-        self.audio_button = tk.Button(self.window, text="Start Audio Stream", command=self.toggle_audio_stream)
-        self.audio_button.pack()
-
-        self.create_button = tk.Button(self.window, text="Create Conference", command=self.create_conference)
-        self.create_button.pack()
-
-        self.join_button = tk.Button(self.window, text="Join Conference", command=self.join_conference_gui)
-        self.join_button.pack()
-
-        self.quit_button = tk.Button(self.window, text="Quit Conference", command=self.quit_conference_gui)
-        self.quit_button.pack()
-
-        self.video_label = tk.Label(self.window)
-        self.video_label.pack()
-
+        self.app = Flask(__name__)
+        threading.Thread(target=self.run_flask_server, daemon=True).start()
+        CORS(self.app)
+        
+        
         ## video part
         self.cap = None
         self.video_thread = None
         self.video_running = False
-        # ausio part
+        # audio part
         self.P = None
         self.audio_thread = None
         self.audio_running = False
 
-        # For displaying other users' videos
-        self.other_video_labels = {}
-        self.video_queue = queue.Queue()
-        self.root = self.window  # Tkinter 主窗口引用
-        self.root.after(100, self.process_video_queue)
-
-
-    def update_status(self, status):
-        self.status_label.config(text=f"Status: {status}")
     
-    def send_text_message(self):
-        if not self.conference_id:
-            messagebox.showwarning("Warning", "You are not in a conference.")
-            return
-        message = self.message_entry.get().strip()
-        if message:
-            try:
-                data = f"TEXT {message}".encode()
-                self.Socket.sendto(data, (config.SERVER_IP, self.conference_port))
-                self.text_output.insert(tk.END, f"Sent: {message}\n")
-                self.message_entry.delete(0, tk.END)
-            except Exception as e:
-                messagebox.showerror("Error", f"Error sending message: {e}")
+    
 
     def receive_text_message(self):
         while self.is_working:
@@ -110,28 +68,30 @@ class ConferenceClient:
                 data, server_address = self.Socket.recvfrom(921600)
                 # 预解码
                 header = data[:5].decode()
+                print(data)
                 if header == "AUDIO" or header == "VIDEO":
                     port = struct.unpack('>H', data[5:7])[0]
                     payload = data[7:]
                     if header == "AUDIO":
-                        # self.receive_audio_stream(payload)
-                        pass
+                        self.receive_audio_stream(payload)
                     elif header == "VIDEO":
-                        self.receive_video_stream(payload, server_address)
+                        sender_port= data[5:10]
+                        payload = data[12:]
+                        self.receive_video_stream(payload, sender_port)
                 else:
                     header, port, payload = util.decode_message(data)
-                    self.text_output.insert(tk.END, f"Receive message from port {port}\n.")
+                    text_output = f"Receive message from port {port}\n."
                 if header == "TEXT ":
                     if self.conference_port == None:
                         self.conference_port = port
-                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    text_output = f"Received: {payload}\n"
                 elif header == "CREAT":
                     port_message = payload.split(' ')
                     self.conference_audio_port = int(port_message[0])
                     self.conference_video_port = int(port_message[1])
-                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    text_output = f"Received: {payload}\n"
                 elif header == "JOIN ":
-                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    text_output = f"Received: {payload}\n"
                     content = payload.split(':')
                     status_code, conference_id = content[0], content[1]
                     if status_code == "OK":
@@ -140,56 +100,268 @@ class ConferenceClient:
                         self.join_success.set()
                         self.conference_id = conference_id
                         self.update_status(f"On Meeting {conference_id}")
-                        self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
+                        text_output = f"Joined Conference {conference_id}.\n"
                     else:
-                        messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
+                        # messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
                         break
                     self.join_conference(conference_id)
-                elif header == "CANCE":
-                    self.text_output.insert(tk.END, f"Received: {payload}\n")
-                    # self.cancel_conference()
-                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
+                elif header == "QUIT ":
+                    text_output = f"Received: {payload}\n"
                     self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
 
+ 
+        
+    def run_flask_server(self):
+        @self.app.route("/")
+        def index():
+            return "Welcome to Remote Meeting API!"
+    
+        @self.app.route('/create_conference', methods=['POST'])
+        def create_conference_route():
+            try:
+                self.create_conference()  # 调用类中的创建会议方法
+                return jsonify({
+                    "status": "success",
+                    "message": f"Conference {self.conference_id} created successfully."
+                })
+            except Exception as e:
+                print(e)
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error creating conference: {str(e)}"
+                }), 500
+        @self.app.route('/join_conference', methods=['POST'])
+        def join_conference_route():
+            try:
+                conference_id = request.get_json().get('conferenceId')
+                self.join_conference(conference_id)  # 调用类中的创建会议方法
+                return jsonify({
+                    "status": "success",
+                    "message": f"Joined Conference {self.conference_id} successfully."
+                })
+            except Exception as e:
+                print(e)
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error joining conference: {str(e)}"
+                }), 500
+                
+        @self.app.route('/quit_conference', methods=['POST'])
+        def quit_conference_route():
+            """
+            Handle a POST request to quit a conference.
+            This will process the quit request and clean up resources on the server.
+            """
+            try:
+                self.quit_conference()
+                return jsonify({
+                    "status": "success",
+                    "message": f"Left Conference {self.conference_id} successfully."
+                })
+            
+            except Exception as e:
+                print(f"Error processing quit request: {e}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error leaving conference: {str(e)}"
+                }), 500
+        
+        @self.app.route('/send_message', methods=['POST'])       
+        def send_text_message():
+            if not self.conference_id:
+                return jsonify({
+                    "status": "error",
+                    "message": "You are not in a conference."
+                }), 500
+            message = request.get_json().get('message')
+            if message:
+                try:
+                    data = f"TEXT {message}".encode()
+                    self.Socket.sendto(data, (config.SERVER_IP, self.conference_port))
+                    return jsonify({
+                    "status": "success",
+                    "message": f"Send TEXT {message}"
+                    }), 200
+                except Exception as e:
+                    return jsonify({
+                    "status": "error",
+                    "message": f"Error leaving conference: {str(e)}"
+                    }), 500
+        
+        
+        @self.app.route('/toggle_video_stream', methods=['POST'])       
+        def toggle_video_stream():
+            if not self.conference_id:
+                return jsonify({
+                    "status": "error",
+                    "message": f"You are not in a conference."
+                    }), 500
+            action = request.get_json().get('action')
+            self.video_running = False if action=='start' else True
+            if not self.video_running:
+                self.video_running = True
+                self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
+                self.video_thread.start()
+                return jsonify({
+                    "status": "success",
+                    "message": f"video start"
+                    }), 200
+            else:
+                self.video_running = False
+                return jsonify({
+                    "status": "success",
+                    "message": f"video stop"
+                    }), 200
+               
+        @self.app.route('/toggle_audio_stream', methods=['POST'])
+        def toggle_audio_stream():
+            if not self.conference_id:
+                return jsonify({
+                    "status": "error",
+                    "message": f"You are not in a conference."
+                    }), 500
+            action = request.get_json().get('action')
+            self.audio_running = False if action=='start' else True
+            if not self.audio_running:
+                self.audio_running = True
+                self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
+                self.audio_thread.start()
+                return jsonify({
+                    "status": "success",
+                    "message": f"audio start"
+                    }), 200
+            else:
+                self.audio_running = False
+                return jsonify({
+                    "status": "success",
+                    "message": f"audio stop"
+                    }), 200
+
+
+        @self.app.route("/get_video", methods=["GET"])
+        def get_video():
+            """
+            用于流式返回视频帧。
+            """
+            def generate():
+                while True:
+                    if self.last_frame:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + self.last_frame + b'\r\n\r\n')
+                    else:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + b'\r\n\r\n')
+            return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        
+
+    def create_conference(self):
+        if not self.conference_id:
+            conference_id = ''.join(random.choices('0123456789', k=6))
+            if conference_id and conference_id.isdigit():
+                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+                host_thread.start()
+                self.threads['host'] = host_thread
+                text_output = f"Conference id {conference_id} Created."
+                self.conference_id = conference_id
+                self.host = True
+                message = f"CREAT{conference_id}"
+                try:
+                    data = message.encode()
+                    self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
+                    text_output = f"Sent: {message}\n"
+                except Exception as e:
+                    print("Error", f"Error sending message: {e}")
+                    
+                return jsonify({
+                "status": "success",
+                "text_output": text_output,
+                "conference_id": conference_id
+            })
+                
+        else:
+            return jsonify({
+            "status": "error",
+            "text_output": "You are already in a conference."
+        })
+
+
+    def join_conference(self, conference_id):
+        text_output = f"Joined Conference {conference_id}.\n"
+        message = f"JOIN {conference_id}"
+        try:
+            data = message.encode()
+            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
+            text_output = f"Sent: {message}\n"
+        except Exception as e:
+            print("Error", f"Error sending message: {e}")
+        guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+        guest_thread.start()
+        return jsonify({
+                "status": "success",
+                "text_output": text_output,
+                "conference_id": conference_id
+            })
+
+    def quit_conference(self):
+        if not self.conference_id:
+            print("Warning", "You are not in a conference.")
+            return
+        message = f"QUIT {self.conference_id}"
+        try:
+            data = message.encode()
+            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
+            text_output = f"Sent: {message}\n"
+        except Exception as e:
+            print("Error", f"Error sending message: {e}")
+        self.conference_id = None
+        self.conference_port = None
+        self.join_success.clear()
+        text_output = text_output + "Left the conference.\n"
+        return jsonify({
+                "status": "success",
+                "text_output": text_output,
+                "conference_id": self.conference_id
+            })
+
+
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
         addr = (config.SERVER_IP, self.conference_video_port)
+
+
         while self.video_running:
             _, img = self.cap.read()
             img = cv2.flip(img, 1)
-
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            # video_data = b"VIDEO" + send_data.tobytes()
+           
+            if img is None:
+                return
+            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
             video_data = send_data.tobytes()
             self.Socket.sendto(video_data, addr)
-
             # Convert OpenCV image to PIL image for Tkinter
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
-            img_tk = ImageTk.PhotoImage(img_pil)
-
-            # Update the Tkinter label with the new image
-            self.video_label.config(image=img_tk)
-            self.video_label.image = img_tk
+            # img_tk = ImageTk.PhotoImage(img_pil)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         # When video stops, release the capture and clear the video label
         self.cap.release()
-        self.video_label.config(image='')  # Clear the image in the Tkinter label
 
-    def receive_video_stream(self, video_data, client_address):
+    def receive_video_stream(self, video_data,client_address):
         """
         Receive video stream from other clients and enqueue it for GUI update.
         """
         # TODO: 标识到底是哪个client
-        # TODO: 关闭视频流传输会让画面消失
+        # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
+        print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
     def process_video_queue(self):
@@ -203,21 +375,26 @@ class ConferenceClient:
             if img is not None:
                 img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 img_pil = Image.fromarray(img_rgb)
-                img_tk = ImageTk.PhotoImage(img_pil)
+                
+                img_io = io.BytesIO()
+                img_pil.save(img_io, 'JPEG')
+                img_io.seek(0)
+                
+                self.last_frame = img_io.read()
 
-                # 检查是否已经为该客户端创建了视频标签
-                if client_address not in self.other_video_labels:
-                    # 创建一个新的标签来显示接收到的视频
-                    video_label = tk.Label(self.window)
-                    video_label.pack(side=tk.LEFT, padx=10, pady=10)  # 可以根据需要调整布局
-                    self.other_video_labels[client_address] = video_label
+                
+                # # 检查是否已经为该客户端创建了视频标签
+                # if client_address not in self.other_video_labels:
+                #     # 创建一个新的标签来显示接收到的视频
+                #     video_label = tk.Label(self.window)
+                #     video_label.pack(side=tk.LEFT, padx=10, pady=10)  # 可以根据需要调整布局
+                #     self.other_video_labels[client_address] = video_label
 
-                # 更新对应客户端的标签
-                self.other_video_labels[client_address].config(image=img_tk)
-                self.other_video_labels[client_address].image = img_tk
+                # # 更新对应客户端的标签
+                # self.other_video_labels[client_address].config(image=img_tk)
+                # self.other_video_labels[client_address].image = img_tk
 
-        # 每隔100毫秒调用一次自身，继续处理队列中的视频数据
-        self.root.after(100, self.process_video_queue)
+        self.root.after(10, self.process_video_queue)
 
     def receive_audio_stream(self, audio_data):
         """
@@ -236,20 +413,7 @@ class ConferenceClient:
         except Exception as e:
             print(f"Error playing audio data: {e}")
 
-
-
-    def toggle_video_stream(self):
-        if not self.conference_id:
-            messagebox.showwarning("Warning", "You are not in a conference.")
-            return
-        if not self.video_running:
-            self.video_running = True
-            self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
-            self.video_thread.start()
-            self.video_button.config(text="Stop Video Stream")
-        else:
-            self.video_running = False
-            self.video_button.config(text="Start Video Stream")
+    
 
     def send_audio_stream(self):
         self.P=pyaudio.PyAudio()
@@ -270,94 +434,11 @@ class ConferenceClient:
         self.P.terminate()
 
 
-    
-    def toggle_audio_stream(self):
-        if not self.conference_id:
-            messagebox.showwarning("Warning", "You are not in a conference.")
-            return
-        if not self.audio_running:
-            self.audio_running = True
-            self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
-            self.audio_thread.start()
-            self.audio_button.config(text="Stop Audio Stream")
-        else:
-            self.audio_running = False
-            self.audio_button.config(text="Start Audio Stream")
-
-
-
-    
-    def create_conference(self):
-        if not self.conference_id:
-            conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
-            if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-                host_thread.start()
-                self.threads['host'] = host_thread
-                self.update_status(f"On Meeting {conference_id}")
-                self.text_output.insert(tk.END, f"Conference id {conference_id} Created.\n")
-                self.conference_id = conference_id
-                self.host = True
-                message = f"CREAT{conference_id}"
-                try:
-                    data = message.encode()
-                    self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
-                    self.text_output.insert(tk.END, f"Sent: {message}\n")
-                except Exception as e:
-                    messagebox.showerror("Error", f"Error sending message: {e}")
-        else:
-            messagebox.showwarning("Warning", "You are already in a conference.")
-
-    def join_conference_gui(self):
-        if self.conference_id:
-            messagebox.showwarning("Warning", "You are already in a conference.")
-            return
-        conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
-        if conference_id and conference_id.isdigit():
-            # TODO:后续添加密码验证
-            message = f"JOIN {conference_id}"
-            try:
-                data = message.encode()
-                self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
-                self.text_output.insert(tk.END, f"Sent: {message}\n")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error sending message: {e}")
-            guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-            guest_thread.start()
-        else:
-            messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
-
-    def join_conference(self, conference_id):
-        self.update_status(f"On Meeting - {conference_id}")
-        self.text_output.insert(tk.END, f"Joined Conference {conference_id}.\n")
-
-    def quit_conference_gui(self):
-        if not self.conference_id:
-            messagebox.showwarning("Warning", "You are not in a conference.")
-            return
-        message = f"QUIT {self.conference_id}"
-        try:
-            data = message.encode()
-            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
-            self.text_output.insert(tk.END, f"Sent: {message}\n")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error sending message: {e}")
-        self.quit_conference()
-
-    def quit_conference(self):
-        self.conference_id = None
-        self.conference_port = None
-        self.join_success.clear()
-        self.update_status("Free")
-        self.text_output.insert(tk.END, "Left the conference.\n")
-
-    def cancel_conference(self):
-        self.update_status("Free")
-        self.text_output.insert(tk.END, "Conference cancelled.\n")
-
+   
+            
+            
     def start(self):
-        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.window.mainloop()
+        self.app.run(host="0.0.0.0", port=7777, debug=True)
     
     def on_closing(self):
         self.is_working = False
@@ -368,8 +449,9 @@ class ConferenceClient:
         if self.P:
             self.P.terminate()
         self.Socket.close()
-        self.window.destroy()
 
 if __name__ == '__main__':
     client1 = ConferenceClient()
+    print(client1.Socket.getsockname())
     client1.start()
+

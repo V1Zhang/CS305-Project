@@ -29,13 +29,14 @@ const routes: RouteRecordRaw[] = [
                 component: () => import(/* webpackChunkName: "mode" */ '../pages/mode.vue'),
             },
             {
-                path: '/interaction',
+                // path: '/interaction',
+                path: '/conference',
                 name: 'Interaction',
                 meta: {
                     title: '运动交互',
                     permiss: '3',
                 },
-                component: () => import(/* webpackChunkName: "mode" */ '../pages/interaction.vue'),
+                component: () => import(/* webpackChunkName: "mode" */ '../pages/conference.vue'),
             },
         ],
     },

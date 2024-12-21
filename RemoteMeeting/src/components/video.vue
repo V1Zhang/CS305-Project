@@ -10,7 +10,7 @@ export default {
   data() {
     return {
       videoUrl: 'http://172.20.10.12:7777/get_video',
-      fallbackUrl: img,
+      // fallbackUrl: img,
       currentVideoUrl: '',
     };
   },
@@ -20,7 +20,7 @@ export default {
   methods: {
     handleError() {
       console.log('Error loading video stream, falling back to image');
-      this.currentVideoUrl = this.fallbackUrl;
+      // this.currentVideoUrl = this.fallbackUrl;
     },
   },
 };

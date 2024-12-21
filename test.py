@@ -1,42 +1,50 @@
-import struct
+import av
+import numpy as np
+import cv2
 
-def encode_message(header, port, payload):
-    """
-    Encode message with header and payload
-    :param header: str, message header
-    :param port: int, message port
-    :param payload: str, message payload
-    :return: bytes, encoded message
-    """
-    # Header is fixed-size string (5 bytes)
-    header_bytes = header.encode()
-    # Port is 2 bytes in network byte order
-    port_bytes = struct.pack('>H', port)
-    # Payload is the remaining part
-    payload_bytes = payload.encode()
-    # Concatenate all parts
-    return header_bytes + port_bytes + payload_bytes
+# 创建一个输出容器（.mp4 文件）
+output_file = 'output_h264.mp4'
+container = av.open(output_file, mode='w')
 
+# 创建一个视频流，指定 H.264 编码
+stream = container.add_stream('h264', rate=30)  # H.264 编码，帧率为 30
+stream.width = 640  # 视频宽度
+stream.height = 480  # 视频高度
+stream.pix_fmt = 'yuv420p'  # 使用 YUV 420 色彩空间（H.264 常用的颜色格式）
 
-def decode_message(data):
-    """
-    Decode message with header, port, and payload
-    :param data: bytes, encoded message
-    :return: tuple(header, port, payload)
-    """
-    # Extract header (first 5 bytes)
-    header = data[:5].decode()
-    # Extract port (next 2 bytes)
-    port = struct.unpack('>H', data[5:7])[0]
-    # Extract payload (remaining bytes)
-    payload = data[7:].decode()
-    return header, port, payload
+# 创建一个视频捕获对象，读取摄像头（你也可以使用其他视频文件作为输入）
+cap = cv2.VideoCapture(0)  # 这里使用默认摄像头（ID 0）
 
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-if __name__ == "__main__":
-    # Test the encoding and decoding
-    encoded = encode_message("TEXT ", 50051, "Hello World!")
-    print(encoded)  # Output: b'TEXT \xc3\x13Hello World!'
-    
-    decoded = decode_message(encoded)
-    print(decoded)  # Output: ('TEXT ', 50051, 'Hello World!')
+    # 水平翻转图像（如果是左右颠倒）
+    frame = cv2.flip(frame, 1)  # 水平翻转，1 表示左右翻转
+
+    # 将帧从 BGR 转换为 RGB（OpenCV 默认是 BGR，PyAV 需要 RGB）
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    # 创建 PyAV 的视频帧
+    video_frame = av.VideoFrame.from_ndarray(frame_rgb, format='rgb24')
+
+    # 编码视频帧
+    for packet in stream.encode(video_frame):
+        container.mux(packet)
+
+    # 显示视频帧（如果需要显示）
+    cv2.imshow('Video', frame)
+
+    # 按 'q' 键退出循环
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# 在视频结束后，添加最后的编码帧（Flush）
+for packet in stream.encode():
+    container.mux(packet)
+
+# 释放资源
+cap.release()
+cv2.destroyAllWindows()
+container.close()

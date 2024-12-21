@@ -1,44 +1,51 @@
-from flask import Flask, request, jsonify, make_response, redirect, url_for
+from flask import Flask, Response, request
 from flask_cors import CORS
-
-
+from utils.camera import Camera
 
 app = Flask(__name__)
-app.config.from_object(__name__)
-
-# enable CORS 跨源HTTP请求控制
 CORS(app)
 
-message = ""
+camera = Camera()
 
 
-@app.route('/')
-def hello_world():
+@app.route("/")
+def index():
+    return "Welcome to Fitness Magic Mirror API!"
+
+
+@app.route("/hello", methods=["GET", "POST"])
+def hello():
     return "Hello World!"
 
 
-@app.route('/vueflask', methods=['POST', 'GET'])
-def vueflask():
-    response = jsonify({"message": "Success!"})
-    response.headers.set('Access-Control-Allow-Origin', '*')
-    if request.method == 'POST': # 如果是POST请求
-        data = request.json
-    
-        action_id = data.get('actionId')
-        if action_id == 1:
-            text = Foream_Plank_Calculate(joints)
-        else:
-            error = 'Invalid action ID'
-        return jsonify({'text': text})
-    else:
-        return response
-    
-
-    
+@app.route("/hi", methods=["GET", "POST"])
+def hi():
+    return "Hi World!"
 
 
+def get_frame(display):
+
+    while True:
+        frame = display.get_frame()
+        yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
 
 
+@app.route("/get_video", methods=["GET"])
+def grt_video():
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    return Response(
+        get_frame(camera), mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
+@app.route("/get_message", methods=["GET"])
+def get_message():
+    text = int(request.args.get("text"))
+    if camera.get_action() != text:
+        camera.set_action(text)
+    message = camera.get_message()
+    return message
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=7777, debug=True, threaded=True)

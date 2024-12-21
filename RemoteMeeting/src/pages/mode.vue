@@ -2,15 +2,6 @@
   <div>
     <v-header/>
     <div id="page_container" style="text-align: center;">
-      <div class="container">
-        <transition name="scroll">
-          <div class="sentence" v-if="currentSentence">{{ currentSentence }}</div>
-        </transition>
-      </div>
-      <div class="sport">
-        <img src="../assets/icon/sport.svg" alt="sport icon" class="sport-icon">
-        Start Training Now!
-      </div>
       <div class="action-list">
         <div v-for="action in actions" :key="action.id" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="action-item"
@@ -28,36 +19,30 @@
         </div>
       </div>
     </div>
+    <div v-if="showJoinModal" class="modal">
+      <div class="modal-content">
+        <h2>Join Meeting</h2>
+        <input v-model="conferenceId" type="text" placeholder="Enter conference ID" />
+        <button @click="joinConference">Join</button>
+        <button @click="closeModal">Cancel</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import {useMainStore} from '../store/data.ts';
 import vHeader from '../components/header.vue';
+import axios from 'axios';
 
-const mainStore = useMainStore()
+
 export default {
   components: {
     vHeader
   },
   data() {
     return {
-      sentences: [
-        "Good morning! Exercise makes the day better!",
-        "Keep pushing, you're doing great!",
-        "Stay active, stay healthy!",
-        "Fitness is not a destination, it's a way of life.",
-        "Believe in yourself and all that you are.",
-        "A little progress each day adds up to big results.",
-        "Stay positive, work hard, make it happen.",
-        "Your body can stand almost anything. It’s your mind that you have to convince.",
-        "Don't limit your challenges, challenge your limits.",
-        "Strive for progress, not perfection."
-      ],
-      currentSentence: '',
       index: 0,
       selectedAction: null,
-      selectedActionVideo: null,
       actions: [
         {
           id: 1,
@@ -66,8 +51,10 @@ export default {
         {
           id: 2,
           name: ' Join Meeting',
-        },
-      ]
+        }
+      ],
+      showJoinModal: false, // Controls the modal visibility
+      conferenceId: "" // Holds the conference ID input by the user
     }
   },
   created() {
@@ -83,57 +70,68 @@ export default {
         this.selectedAction = null;
       }
     },
-    selectActionVideo(action) {
-      this.selectedActionVideo = action;
-    },
-    deselectActionVideo(action) {
-      if (this.selectedActionVideo === action) {
-        this.selectedActionVideo = null;
-      }
-    },
     async handleActionClick(action) {
-      if (action.id === 1) {  // 如果选择了 "Create Meeting"
-      // 假设你需要从输入框中获取 conference_id，或者可以在此处动态生成一个
-        const conferenceId = prompt("Enter Conference ID:");
-        if (conferenceId) {
-          try {
-            // 发送 POST 请求到后端
-            const response = await this.$axios.post('/create_conference', { conference_id: conferenceId });
-            // 如果请求成功
-            console.log(response.data.message);
-            // 可以在这里处理成功后的逻辑，例如跳转到会议页面
-            this.$router.push(`/conference/${conferenceId}`);
-          } catch (error) {
-            // 如果请求失败
-            console.error("Error creating conference:", error.response.data.error);
-          }
-        } else {
-          alert("Please enter a valid conference ID.");
+      if (action.id === 1) {  //  "Create Meeting"
+      try {
+            // 发送 POST 请求到后端的 create_conference 方法
+            const response = await axios.post('http://127.0.0.1:7777/create_conference', {
+            // 如果需要传递参数，可以在这里添加
+            userId: "user123", // 示例数据
+            });
+
+            if (response.status === 200) {
+            console.log("Conference Created: ", response.data);
+            // 可以做一些状态更新，比如更新界面上的状态
+            } else {
+            console.error("Failed to create conference", response.data);
+            }
+        } catch (error) {
+            console.error("Error creating conference:", error);
         }
-      } else if (action.id === 2) {
-        const conferenceId = prompt("Enter Conference ID to join:");
-        if (conferenceId) {
-          try {
-            // 发送 POST 请求到后端的 '/join_conference' 路由
-            const response = await this.$axios.post('/join_conference', { conference_id: conferenceId });
-            console.log(response.data.message);
-            this.$router.push(`/conference/${conferenceId}`);
-          } catch (error) {
-            console.error("Error joining conference:", error.response.data.error);
-          }
-        } else {
-          alert("Please enter a valid conference ID.");
-        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.$router.push('/conference');
+
+
+      } else if (action.id === 2) {  //  "Join Meeting"
+      this.showJoinModal = true; // Show the modal to input conference ID
+      }
+    },
+
+    async joinConference() {
+      // 检查用户输入的会议ID是否为空
+      if (!this.conferenceId) {
+        alert("Please enter a valid conference ID.");
+        return;
       }
 
+      try {
+        const response = await axios.post('http://127.0.0.1:7777/join_conference', {
+          userId: "user123", // 示例数据
+          conferenceId: this.conferenceId // 用户输入的会议ID
+        });
 
-      console.log(`Selected action: ${action.name}`);
-      mainStore.update({text: action.id, name: action.name});
-      await new Promise(resolve => setTimeout(resolve, 500));
-      this.$router.push('/interaction');
+        if (response.status === 200) {
+          console.log("Joined Conference: ", response.data);
+          // 更新UI（例如：加入成功后显示会议详情或状态）
+          this.showJoinModal = false; // 成功后关闭模态框
+          await new Promise(resolve => setTimeout(resolve, 500));
+          this.$router.push('/conference');
+        } else {
+          console.error("Failed to join conference", response.data);
+          alert("Failed to join conference. Please try again.");
+        }
+      } catch (error) {
+        console.error("Error joining conference:", error);
+        alert("Error joining conference. Please try again.");
+      }
     },
-    
-  }
+
+    closeModal() {
+      this.showJoinModal = false; // 关闭模态框
+      this.conferenceId = ""; // 清空输入框
+    }
+  },
+  
 }
 </script>
 
@@ -161,20 +159,6 @@ export default {
   font-size: 29px;
   display: flex;
   align-items: center;
-}
-
-.sport {
-  font-size: 27px;
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
-  font-weight: bolder;
-}
-
-.sport-icon {
-  margin-right: 10px;
-  height: 52px;
-  width: 52px;
 }
 
 .action-list {
@@ -294,5 +278,35 @@ video {
 .close-button:hover {
   background-color: #00a152;
   transform: scale(1.5);
+}
+
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.2);
+  width: 300px;
+}
+
+input {
+  width: 100%;
+  padding: 8px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 </style>

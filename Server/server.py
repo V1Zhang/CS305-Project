@@ -6,6 +6,7 @@ import threading
 import struct
 import config
 import matplotlib.pyplot as plt
+import RtpPacket
 
 
 class ConferenceServer:
@@ -15,19 +16,19 @@ class ConferenceServer:
         self.conference_id = conference_id  # conference_id for distinguish difference conference
         # 绑定端口
         self.udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udpSocket.bind(('0.0.0.0',0))
+        self.udpSocket.bind((SERVER_IP,0))
         self.udp_port = self.udpSocket.getsockname()[1]
 
         self.audio_rtpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.audio_rtpSocket.bind(('0.0.0.0',0))
+        self.audio_rtpSocket.bind((SERVER_IP,0))
         self.audio_rtp_port = self.audio_rtpSocket.getsockname()[1]
 
         self.video_rtpSocket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        self.video_rtpSocket.bind(('0.0.0.0',0))
+        self.video_rtpSocket.bind((SERVER_IP,0))
         self.video_rtp_port = self.video_rtpSocket.getsockname()[1]
 
         self.rtcpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.rtcpSocket.bind(('0.0.0.0',0))
+        self.rtcpSocket.bind((SERVER_IP,0))
         self.rtcp_port = self.rtcpSocket.getsockname()[1]
         
         self.conf_serve_ports = None
@@ -44,10 +45,15 @@ class ConferenceServer:
                                         rate=44100,
                                         output=True,
                                         frames_per_buffer=2048)
-        
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
-        self.im_display = None
+        self.audio_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
+        self.audio_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
+        self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
+        self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
+
+        self.audio_buffer = {} # client_address: AudioSegment
+        self.audio_mixer_task = None
+
+    
         
 
 
@@ -87,7 +93,7 @@ class ConferenceServer:
         broadcast_data = encode_message("TEXT ",self.udp_port,formatted_message)
         print(f"Broadcasting message: {formatted_message}")
         for client in self.clients_info:
-            # if client != sender_address:
+            if client != sender_address:
                 try:
                     self.udpSocket.sendto(broadcast_data,client)
                     print("Message sent.")
@@ -123,20 +129,20 @@ class ConferenceServer:
         # 创建用于处理文本消息的UDP端点
         self.text_transport, self.text_protocol = await loop.create_datagram_endpoint(
             lambda: TextMessageProtocol(self),
-            local_addr=(config.SERVER_IP,self.udp_port)  
+            sock=self.udpSocket
         )
         print(f"Text data is handled on port {self.udp_port}.")
         # 创建用于处理音频 RTP 流的 UDP 端点
         self.audio_transport, self.audio_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'audio'),
-            local_addr=(config.SERVER_IP, self.audio_rtp_port)
+            sock=self.audio_rtpSocket
         )
         print(f"Audio data is handled on port {self.audio_rtp_port}.")
 
         # 创建用于处理视频 RTP 流的 UDP 端点
         self.video_transport, self.video_protocol = await loop.create_datagram_endpoint(
             lambda: RTPProtocol(self, 'video'),
-            local_addr=(config.SERVER_IP, self.video_rtp_port)
+            sock=self.video_rtpSocket
         )
         print(f"Video data is handled on port {self.video_rtp_port}.")
 
@@ -147,30 +153,42 @@ class ConferenceServer:
         finally:
             self.close()
         
-    def forward_rtp_data(self, data, sender_address, data_type):
+    async def send_rtp_to_client(self, data, client, data_type, sender_address):
         """
-        Forward RTP packets
+        Forward RTP data to a client except the sender asyncrounously.
         """
-        # TODO
+
+        try:
+            sender_ip, sender_port = sender_address
+            sender_port_bytes = str(sender_port).encode()
+            if data_type == 'audio':
+                transport = self.audio_transport
+                header_bytes = "AUDIO".encode()
+                port_bytes = struct.pack('>H', self.audio_rtp_port)
+                packet = header_bytes + port_bytes + data
+            elif data_type == 'video':
+                transport = self.video_transport
+                header_bytes = "VIDEO".encode()
+                port_bytes = struct.pack('>H', self.video_rtp_port)
+                print(sender_port_bytes)
+                packet = header_bytes + sender_port_bytes+ port_bytes + data
+            else:
+                return          
+            transport.sendto(packet, client)
+        except Exception as e:
+                    print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
+
+
+    async def forward_rtp_data(self,data,sender_address,data_type):
+        """
+        Forward RTP data to all clients except the sender
+        """
+        tasks = []
         for client in self.clients_info:
             if client != sender_address:
-                try:
-                    if data_type == 'audio':
-                        transport = self.audio_transport
-                        header_bytes = "AUDIO".encode()
-                        port_bytes = struct.pack('>H', self.audio_rtp_port)
-                        data = header_bytes + port_bytes + data
-                    elif data_type == 'video':
-                        transport = self.video_transport
-                        header_bytes = "VIDEO".encode()
-                        port_bytes = struct.pack('>H', self.video_rtp_port)
-                        data = header_bytes + port_bytes + data
-                    else:
-                        continue
-                    transport.sendto(data, client)
-                    print(f"{data_type.capitalize()} RTP packets are sent to {client}")
-                except Exception as e:
-                    print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
+                tasks.append(self.send_rtp_to_client(data, client, data_type, sender_address))
+        if tasks:
+            await asyncio.gather(*tasks)
 
     def handle_video_frame(self, data):
         """
@@ -195,7 +213,7 @@ class ConferenceServer:
         frame_data = np.frombuffer(data, dtype='uint8')
         img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
         if img is not None:
-                        # 在图像上显示“server”字样
+            # 在图像上显示“server”字样
             cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.imshow('server', img)
     def handle_audio_data(self, data):
@@ -260,15 +278,13 @@ class RTPProtocol(asyncio.DatagramProtocol):
         print(f"{self.data_type.capitalize()} RTPProtocol has been established.")
 
     def datagram_received(self, data, addr):
-        # self.server.add_client(addr)
+        asyncio.create_task(self.server.forward_rtp_data(data,addr,self.data_type))
         if self.data_type == 'video':
-            self.server.handle_video_frame(data)
+            # self.server.handle_video_frame(data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
-        # TODO:
-        self.server.forward_rtp_data(data, addr, self.data_type)
 
     def error_received(self, exc):
         print(f"{self.data_type.capitalize()} RTPProtocol 接收到错误: {exc}")
@@ -293,8 +309,8 @@ class MainServer:
         self.P=pyaudio.PyAudio()
         self.audio_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
         print('The server is ready to receive')
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
+        # plt.ion()
+        # self.fig, self.ax = plt.subplots()
         # while True:
         #     connectionSocket, clientAddress = self.serverSocket.accept()
         #     client_thread = threading.Thread(target=handle_client, args=(connectionSocket, clientAddress))
@@ -349,20 +365,26 @@ class MainServer:
         """
         self.conference_servers[conference_id].clients_info.remove(client_address)
         # 如果已经没有人在会议中，则关闭会议
-        if len(self.conference_servers[conference_id].clients_info) == 0:
-            self.handle_cancel_conference(conference_id)
+        if len(self.conference_servers[conference_id].clients_info) == 0 or client_address==self.host_address:
+            self.conference_servers[conference_id].broadcast_info("The conference is closed.",BROADCAST_CANCEL_CONFERENCE)
+            
+            # TODO: 关闭线程
+            self.threads[conference_id].join()
+            del self.conference_servers[conference_id]
+            del self.threads[conference_id]
+            for client in self.conference_servers[conference_id].clients_info:
+                self.close_client_connection(client)
         
 
-    def handle_cancel_conference(self,conference_id):
+    def handle_leave_conference(self,conference_id, client_address):
         """
         cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
         """
-        self.conference_servers[conference_id].broadcast_info("The conference is closed.",BROADCAST_CANCEL_CONFERENCE)
-        # self.threads[conference_id].join()
-        # TODO: 关闭线程
-        del self.conference_servers[conference_id]
-        del self.threads[conference_id]
-        # self.threads[conference_id].join()
+        # TODO: 会议里移除这个客户
+        self.close_client_connection(client_address)
+        
+    def close_client_connection(client_address):
+        pass
 
         
 
@@ -381,7 +403,7 @@ class MainServer:
         broadcast_data = encode_message("TEXT ", self.server_port, formatted_message)
         print(f"Broadcasting message: {formatted_message}")
         for client in self.clients:
-            if client != sender_address:  # 不发送给消息发送者
+            # if client != sender_address:  # 不发送给消息发送者
                 print(client)
                 try:
                     self.serverSocket.sendto(broadcast_data, client)
@@ -398,7 +420,7 @@ class MainServer:
         while True:
             try:
                 # 接收数据
-                data, client_address = self.serverSocket.recvfrom(921600)
+                data, client_address = self.serverSocket.recvfrom(1024)
                 if not data:
                     continue
                 header, payload = data[:5].decode(), data[5:]  # 协议头为固定长度5字节
@@ -412,11 +434,6 @@ class MainServer:
                 elif header == "VIDEO":   
                     # 解码接收到的图像数据
                     frame_data = np.frombuffer(payload, dtype='uint8')
-                    img = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        # 在图像上显示“server”字样
-                        cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-                        cv2.imshow('server', img)
                 elif header == "AUDIO":
                     self.audio_stream.write(payload)
                     print("Audio data received .")
@@ -447,6 +464,10 @@ class MainServer:
                     message = payload.decode()
                     print(f"Quit conference {message} request received.")
                     self.handle_quit_conference(conference_id=int(message),client_address=client_address)
+                elif header == "LEAVE":
+                    message = payload.decode()
+                    print(f"Leave conference {message} request received.")
+                    self.handle_leave_conference(conference_id=int(message),client_address=client_address)
 
 
                 # # 按下 'q' 键退出
@@ -464,5 +485,6 @@ class MainServer:
 
 
 if __name__ == '__main__':
-    server = MainServer(config.SERVER_IP, config.MAIN_SERVER_PORT)
+    server = MainServer(SERVER_IP, MAIN_SERVER_PORT)
     server.start()
+    
