@@ -13,7 +13,7 @@ CHUNK = 1024
 CHANNELS = 1  # Channels for audio capture
 RATE = 44100  # Sampling rate for audio capture
 
-camera_width, camera_height = 480, 480  # resolution for camera capture
+CAMERA_WIDTH, CAMERA_HEIGHT = 320, 240  # resolution for camera capture
 
 # Broadcast Information
 BROADCAST_JOIN = 0
