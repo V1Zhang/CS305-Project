@@ -7,10 +7,6 @@
           <img src="../assets/icon/action.svg" alt="action icon" class="action-icon">
           Fitness Action: {{ actionName }}
         </div>
-        <div class="heart">
-          <img src="../assets/icon/heart.svg" alt="heart icon" class="heart-icon">
-          Heart Rate: {{ heartRate }} / BPM
-        </div>
       </div>
       <div id="image-container">
         <v-video/>
@@ -145,16 +141,16 @@ export default {
     clearInterval(this.interval);
   },
   methods: {
-    handleSpeak(text) {
-      const synth = window.speechSynthesis;
-      const msg = new SpeechSynthesisUtterance();
-      msg.text = text;
-      msg.lang = "en-US"; //使用的语言
-      msg.volumn = 1; //声音音量
-      msg.rate = 1; //语速
-      msg.pitch = 1; //音高
-      synth.speak(msg); //播放
-    },
+    // handleSpeak(text) {
+    //   const synth = window.speechSynthesis;
+    //   const msg = new SpeechSynthesisUtterance();
+    //   msg.text = text;
+    //   msg.lang = "en-US"; //使用的语言
+    //   msg.volumn = 1; //声音音量
+    //   msg.rate = 1; //语速
+    //   msg.pitch = 1; //音高
+    //   synth.speak(msg); //播放
+    // },
     fetchMessage() {
       setInterval(() => {
         fetch(`http://172.20.10.12:7777/get_message?text=${encodeURIComponent(this.store.text)}`)

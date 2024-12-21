@@ -163,11 +163,14 @@ class ConferenceClient:
                         messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
                         break
                     self.join_conference(conference_id)
-                elif header == "CANCE":
+                elif header == "QUIT ":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
-                    # self.cancel_conference()
-                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
                     self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
+                elif header == "LEAVE":
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
@@ -391,10 +394,6 @@ class ConferenceClient:
         self.update_status("Free")
         self.text_output.insert(tk.END, "Left the conference.\n")
 
-    def cancel_conference(self):
-        self.update_status("Free")
-        self.text_output.insert(tk.END, "Conference cancelled.\n")
-
     def start(self):
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.window.mainloop()
@@ -461,3 +460,4 @@ if __name__ == '__main__':
     client1 = ConferenceClient()
     # print(client1.Socket.getsockname())
     client1.start()
+
