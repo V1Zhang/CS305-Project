@@ -72,7 +72,14 @@ class ConferenceClient:
         self.P = None
         self.audio_thread = None
         self.audio_running = False
+        self.audio_stream=None
 
+        self.p_write = pyaudio.PyAudio()
+        self.audio_stream_write = self.p_write.open(format=pyaudio.paInt16,  # 16-bit audio format
+                            channels=1,              # 单声道
+                            rate=44100,              # 采样率
+                            output=True,             # 输出模式
+                            frames_per_buffer=2048)  # 缓冲区大小
     
     
 
@@ -240,20 +247,19 @@ class ConferenceClient:
                     "message": f"You are not in a conference."
                     }), 500
             action = request.get_json().get('action')
-            self.audio_running = False if action=='start' else True
-            if not self.audio_running:
+            if self.audio_running is None or self.audio_running==False:
                 self.audio_running = True
                 self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
                 self.audio_thread.start()
                 return jsonify({
                     "status": "success",
-                    "message": f"audio start"
+                    "message": f"audio stop"
                     }), 200
             else:
                 self.audio_running = False
                 return jsonify({
-                    "status": "success",
-                    "message": f"audio stop"
+                    "status": "shut",
+                    "message": f"audio start"
                     }), 200
             
         # @self.socketio.on('connect')
@@ -283,6 +289,15 @@ class ConferenceClient:
         def handle_video_stream(data):
             """Handle incoming video stream."""
             pass
+
+        @self.sio.on('audio_stream')
+        def handle_audio_stream(data):
+            """Handle incoming audio stream."""     
+            audio_data = base64.b64decode(data)
+            self.audio_stream_write.write(audio_data)
+                
+            
+
 
 
 
@@ -391,65 +406,50 @@ class ConferenceClient:
         print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
 
-    def process_video_queue(self):
-        """
-        Process video data from the queue and update the GUI.
-        """
-        while not self.video_queue.empty():
-            video_data, client_address = self.video_queue.get()
-            nparr = np.frombuffer(video_data, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img_pil = Image.fromarray(img_rgb)
+    # def process_video_queue(self):
+    #     """
+    #     Process video data from the queue and update the GUI.
+    #     """
+    #     while not self.video_queue.empty():
+    #         video_data, client_address = self.video_queue.get()
+    #         nparr = np.frombuffer(video_data, np.uint8)
+    #         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #         if img is not None:
+    #             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    #             img_pil = Image.fromarray(img_rgb)
                 
-                img_io = io.BytesIO()
-                img_pil.save(img_io, 'JPEG')
-                img_io.seek(0)
-                # Base64 encode the video frame for WebSocket transmission
-                base64_frame = io.BytesIO(img_io.read()).getvalue()
-                print('send')
-                # Emit the video stream to front-end
-                self.socketio.emit('video-stream', {
-                    'clientAddress': self.socketio.sid,
-                    'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
-                })
+    #             img_io = io.BytesIO()
+    #             img_pil.save(img_io, 'JPEG')
+    #             img_io.seek(0)
+    #             # Base64 encode the video frame for WebSocket transmission
+    #             base64_frame = io.BytesIO(img_io.read()).getvalue()
+    #             print('send')
+    #             # Emit the video stream to front-end
+    #             self.socketio.emit('video-stream', {
+    #                 'clientAddress': self.socketio.sid,
+    #                 'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
+    #             })
 
-    def receive_audio_stream(self, audio_data):
-        """
-        Receive audio stream from other clients and play it.
-        """
-        # TODO: 辨别多个client的音轨
-        try:
-            # Convert audio data to Base64 for WebSocket transmission
-            base64_audio = audio_data.hex()  # Convert binary to a hexadecimal string
 
-            # Emit audio stream to the front-end
-            self.socketio.emit('audio-stream', {
-                'audioFrame': base64_audio
-            })
-        except Exception as e:
-            print(f"Error handling audio data: {e}")
-
-    
 
     def send_audio_stream(self):
-        self.P=pyaudio.PyAudio()
-        audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
-        # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
-        addr = (config.SERVER_IP, self.conference_audio_port)
-
+        self.p = pyaudio.PyAudio()
+        self.audio_stream = self.p.open(format=pyaudio.paInt16,  # 16-bit audio format
+                            channels=1,              # 单声道
+                            rate=44100,              # 采样率
+                            input=True,              # 输入模式
+                            frames_per_buffer=4096)  # 缓冲区大小
         while self.audio_running:
-            audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
-            print(len(audio_data))
-            # output_stream.write(audio_data)  # Write audio to speakers
-            # audio_data = b"AUDIO" + audio_data
-            self.Socket.sendto(audio_data, addr)
+            print('audio_runnning')
+            # 从麦克风读取音频数据
+            audio_data = self.audio_stream.read(2048)
+            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+            # 发送音频数据到服务器
+            self.sio.emit('audio_stream', encoded_audio)
 
-        audio_stream.stop_stream()
-        audio_stream.close()
-        # 终止PyAudio对象，释放占用的系统资源
-        self.P.terminate()
+        self.audio_stream.stop_stream()
+        self.audio_stream.close()
+        self.p.terminate()
 
 
    

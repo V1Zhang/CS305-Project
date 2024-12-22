@@ -12,6 +12,8 @@ import RtpPacket
 from conf_server import ConferenceServer
 from Protocol import TextMessageProtocol, RTPProtocol
 import socketio
+import base64
+
 class MainServer:
     def __init__(self, server_ip, main_port):
         # async server
@@ -38,6 +40,13 @@ class MainServer:
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
         eventlet.wsgi.server(eventlet.listen(('', 7000)), self.app)
+
+        # self.p = pyaudio.PyAudio()
+        # self.audio_stream = self.p.open(format=pyaudio.paInt16,  # 16-bit audio format
+        #                     channels=1,              # 单声道
+        #                     rate=44100,              # 采样率
+        #                     output=True,             # 输出模式
+        #                     frames_per_buffer=2048)  # 缓冲区大小
 
          # Register SocketIO event
         
@@ -273,6 +282,11 @@ class MainServer:
             }
             self.sio.emit('video_frame', frame_with_sender)
 
+        @self.sio.on('audio_stream')
+        def handle_audio_stream(sid,data):
+            # audio_data = base64.b64decode(data)
+            self.sio.emit('audio_stream', data)
+            
 
 
 if __name__ == '__main__':
