@@ -180,6 +180,14 @@ def decode_message(data):
     payload = data[7:].decode()
     return header, port, payload
 
+def cleanup(self, addr):
+        """用于清理 addr 相关资源（可根据需要实现）。"""
+        with self.lock:
+            if addr in self.queues:
+                del self.queues[addr]
+            if addr in self.queue_threads:
+                del self.queue_threads
+
 
 if __name__ == "__main__":
     # Test the encoding and decoding

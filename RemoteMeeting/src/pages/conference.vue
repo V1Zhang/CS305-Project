@@ -1,6 +1,9 @@
 <template>
   <div>
     <v-header />
+    <div class="conference-header">
+        <span>Conference ID: {{ conferenceId }}</span>
+      </div>
     <div class="container">
       <!-- 左侧按钮和视频 -->
       <div id="video-button-container">
@@ -11,24 +14,31 @@
           <button @click="toggleAudioStream" class="action-button warning">
             <span class="action-icon">🔊</span> {{ audioButtonText }}
           </button>
+          <button @click="toggleScreenShare" class="action-button warning">
+            <span class="action-icon">📺</span> {{ screenShareButtonText }}
+          </button>
           <button @click="quitConference" class="action-button warning">
-            <span class="action-icon">🚪</span> Quit Conference
+            <span class="action-icon">🚪</span> {{ isHost ? 'End Meeting' : 'Quit Meeting' }}
           </button>
         </div>
+        <!-- <div class="video-container">
+          <img id="player" style="width:704px;height:576px"/>
+        </div> -->
+        <!-- 视频显示区域 -->
         <div class="video-container">
-          <div
-            v-for="(stream, index) in videoStreams"
-            :key="index"
-            class="video-stream-window"
-          >
-            <h3>{{ stream.clientAddress }}</h3>
-            <video
-              :ref="'video_' + index"
-              autoplay
-              playsinline
-              muted
-              class="video-element"
-            ></video>
+          <div class="camera-container">
+            <div v-for="stream in videoStreams" :key="stream.clientAddress" class="video-window">
+              <div class="video-header">
+                <span>{{ stream.clientAddress }}</span>
+              </div>
+              <img v-if="stream.videoFrame" :src="'data:image/jpeg;base64,' + stream.videoFrame" />
+              <p v-else>No Video Stream</p>
+            </div>
+          </div>
+          <!-- 屏幕共享区 -->
+          <div class="screen-share-container">
+            <div class="video-header">Screen Share</div>
+            <img id="player" style="width:704px;height:576px"/>
           </div>
         </div>
       </div>
@@ -70,26 +80,49 @@
     data() {
       return {        
         socket: null,
+        conferenceId: "",  
+        isHost: true,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
+        screenShareButtonText: "Start Screen Share",
         audioContext: null, // Web Audio API AudioContext
         audioSource: null, // Web Audio API AudioBufferSourceNode
         textOutput: "",        // 显示接收到的消息
         messageInput: "",      // 用户输入的消息
         videoStreams: [],
+        screenShareStream: null, // 存储屏幕共享流
+        videoStreamStatus: false,
+        clientsInConference: [],
       }
     },
     created() {
-      this.socket = io('http://127.0.0.1:7777');
+      this.socket = io('http://127.0.0.1:7000');
+
+      this.socket.on('connect', () => {
+        console.log('Connected to server');
+        console.log('Client SID:', this.socket.id); // 打印客户端的 SID
+      });
+      this.socket.on('disconnect', () => {
+        console.log('Disconnected to server');
+      });
       this.socket.on('message', (data) => {
+        console.log('Received message:');
         this.handleIncomingMessage(data);
       });
-      this.socket.on('video-stream', (data) => {
+
+      this.socket.on('video_frame', (data) => {
+        // console.log('Video stream')
         this.handleIncomingVideoStream(data);
       });
-      this.socket.on('sudio-stream', (data) => {
+
+      this.socket.on('audio-stream', (data) => {
         this.handleIncomingAudioStream(data);
       });
+
+      this.socket.on('screen_frame', (data) => {
+      this.handleIncomingScreenShare(data); 
+      });
+
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
     },
@@ -121,25 +154,43 @@
         },
 
         handleIncomingVideoStream(data) {
-          const { clientAddress, videoFrame } = data;
+          const { frame: videoFrame, sender_id: clientAddress } = data; // 确保字段名称与后端一致
+          // console.log(`Received video frame from client: ${clientAddress}`);
+
+          // const decoder = new TextDecoder('utf-8');  // Specify UTF-8 encoding
+          // const decodedFrame = decoder.decode(videoFrame);  // Decode the binary data
 
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
           );
 
-          if (!existingStream) {
-            // 新增一个视频窗口
-            this.videoStreams.push({
-              clientAddress,
-              videoFrame, // Base64 格式的视频帧
-            });
-          } else {
-            // 更新现有的视频帧
-            existingStream.videoFrame = videoFrame;
-          }
+          // if (!existingStream) {
+          //   // 新增一个视频窗口
+          //   this.videoStreams.push({
+          //     clientAddress,
+          //     videoFrame, // Base64 格式的视频帧
+          //   });
+          // } else {
+          //   const player = document.getElementById('currentImage');
+          //   player.src='data:image/jpeg;base64,'+videoFrame;
+          // }
+
+            const player = document.getElementById('player');
+            player.src='data:image/jpeg;base64,'+videoFrame;
+
+      
         },
-    
+
+        handleIncomingScreenShare(data) {
+          const { frame: videoFrame, sender_id: clientAddress } = data;
+          const existingStream = this.videoStreams.find(
+            (stream) => stream.clientAddress === clientAddress
+          );
+            const player = document.getElementById('player');
+            player.src='data:image/jpeg;base64,'+videoFrame;
+        },
+
 
 
 
@@ -212,6 +263,30 @@
             }
         },
 
+        async toggleScreenShare() {
+            try {
+                const response = await axios.post('http://127.0.0.1:7777/toggle_screen_share', {
+                action: this.ScreenShareStatus ? "stop" : "start"  
+                });
+
+                if (response.data.status === 'success') {
+                    this.ScreenShareStatus = !this.ScreenShareStatus;
+                    this.screenShareButtonText = this.ScreenShareStatus ? "Stop Screen Share" : "Start Screen Share";
+                    if (this.ScreenShareStatus) {
+                        console.log('Screen Shrare started successfully.');
+                    } else {
+                        console.log('Screen Shrare stopped successfully.');
+                    }
+                } else {
+                // 如果后端返回错误，打印错误信息
+                console.error('Error toggling screen shrare:', response.data.message);
+                }
+            } catch (error) {
+                // 捕获并打印错误信息
+                console.error("Error toggling screen shrare:", error);
+            }
+        },
+
         async sendMessage() {
           if (!this.messageInput.trim()) {
             return;  // 不发送空消息
@@ -241,21 +316,7 @@
   </script>
   
   <style scoped>
-   
-  #page_container {
-    background: url("../assets/img/bg.png") center;
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-  }
-  
+    
   .container {
   display: flex;  /* 使用 Flexbox 让子元素并排显示 */
   justify-content: space-between;  /* 在主轴方向上分配空间 */
@@ -265,21 +326,36 @@
   gap: 20px;  /* 为左右容器之间增加间距 */
 }
 
+.conference-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #f0f0f0;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;  /* 给下方内容添加一些间距 */
+}
+
+.conference-header span {
+  font-size: 16px;
+  font-weight: bold;
+}
+
 #video-button-container {
   display: flex;
   flex-direction: column;  /* 垂直排列按钮 */
   justify-content: flex-start;
   align-items: center;
-  width: 70%;  /* 控制视频按钮区域的宽度 */
+  width: 70%; 
   background-color: #f5f5f5;  /* 背景色 */
-  padding: 10px;
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
 .buttons-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 20px;  /* 按钮之间的间距 */
   margin-top: 20px;  /* 按钮容器顶部间距 */
 }
@@ -292,9 +368,9 @@
   border: 3px solid #FFFFFF;
   height: 52px;
   padding: 9px 17px;
-  max-width: 440px;
+  max-width: 450px;
   color: white;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: bold;
   cursor: pointer;
   transition: transform 0.2s;
@@ -306,29 +382,50 @@
 
 .action-icon {
   margin-right: 10px;
-  height: 37px;
-  width: 37px;
+  height: 20px;
+  width: 20px;
 }
 
 /* 视频显示区域 */
 .video-container {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-  width: 720px;
-  height: 540px;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: 22px;
-  margin-bottom: -37px;
+  flex-direction: column;  /* 上下排列视频窗口和屏幕共享区域 */
+  gap: 10px;  /* 设置间距 */
+  margin-top: 20px;
 }
 
-.video-container img {
-  max-width: 100%;
-  max-height: 100%;
+.video-header {
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+
+.camera-container {
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+}
+.camera-container img {
+  max-width: 10%;
+  max-height: 10%;
   object-fit: contain;
 }
+.screen-share-container {
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+}
+
+.screen-share-container img {
+  width: 100%;  /* 自适应宽度 */
+  max-width: 704px;
+  max-height: 576px;
+  object-fit: contain;
+}
+
+
 
 /* 聊天容器 */
 #chat-container {
@@ -381,19 +478,4 @@
   font-size: 14px;
 }
 
-.send-button {
-  padding: 8px 15px;
-  border: 1px solid #4CAF50;
-  border-radius: 5px;
-  background-color: #4CAF50;
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  margin-left: 10px;
-}
-
-.send-button:hover {
-  background-color: #45a049;
-}
-
-  </style>
+</style>

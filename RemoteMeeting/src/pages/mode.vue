@@ -33,8 +33,10 @@
 <script>
 import vHeader from '../components/header.vue';
 import axios from 'axios';
+import {useMainStore} from '../store/data.ts';
 
 
+const mainStore = useMainStore()
 export default {
   components: {
     vHeader

@@ -7,6 +7,7 @@ import struct
 import config
 import matplotlib.pyplot as plt
 import RtpPacket
+from queue import Queue, Empty
 
 
 class ConferenceServer:
@@ -26,6 +27,10 @@ class ConferenceServer:
         self.video_rtpSocket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
         self.video_rtpSocket.bind((SERVER_IP,0))
         self.video_rtp_port = self.video_rtpSocket.getsockname()[1]
+        
+        self.screen_rtpSocket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        self.screen_rtpSocket.bind((SERVER_IP,0))
+        self.screen_rtp_port = self.screen_rtpSocket.getsockname()[1]
 
         self.rtcpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.rtcpSocket.bind((SERVER_IP,0))
@@ -49,9 +54,11 @@ class ConferenceServer:
         self.audio_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
         self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
         self.video_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
-
+        self.screen_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 921600)
+        self.screen_rtpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 921600)
         self.audio_buffer = {} # client_address: AudioSegment
         self.audio_mixer_task = None
+
 
     
         
@@ -146,6 +153,15 @@ class ConferenceServer:
         )
         print(f"Video data is handled on port {self.video_rtp_port}.")
 
+        # 创建用于处理屏幕共享 RTP 流的 UDP 端点
+        self.screen_transport, self.screen_protocol = await loop.create_datagram_endpoint(
+            lambda: RTPProtocol(self, 'screen'),
+            sock=self.screen_rtpSocket
+        )
+        print(f"Video data is handled on port {self.screen_rtp_port}.")
+
+
+
         try:
             await asyncio.Future()  # 运行直到被手动停止
         except asyncio.CancelledError:
@@ -153,12 +169,13 @@ class ConferenceServer:
         finally:
             self.close()
         
-    async def send_rtp_to_client(self, data, client, data_type, sender_address):
+    def send_rtp_to_client(self, data, client, data_type, sender_address):
         """
         Forward RTP data to a client except the sender asyncrounously.
         """
 
         try:
+            print('yes',data_type)
             sender_ip, sender_port = sender_address
             sender_port_bytes = str(sender_port).encode()
             if data_type == 'audio':
@@ -172,6 +189,11 @@ class ConferenceServer:
                 port_bytes = struct.pack('>H', self.video_rtp_port)
                 print(sender_port_bytes)
                 packet = header_bytes + sender_port_bytes+ port_bytes + data
+            elif data_type == 'screen':
+                transport = self.screen_transport
+                header_bytes = "SHARE".encode()
+                port_bytes = struct.pack('>H', self.screen_rtp_port)
+                packet = header_bytes + sender_port_bytes + port_bytes + data
             else:
                 return          
             transport.sendto(packet, client)
@@ -179,16 +201,17 @@ class ConferenceServer:
                     print(f"向 {client} 发送 {data_type} RTP 数据包时出错: {e}")
 
 
-    async def forward_rtp_data(self,data,sender_address,data_type):
+    def forward_rtp_data(self,data,sender_address,data_type):
         """
         Forward RTP data to all clients except the sender
         """
-        tasks = []
+        # tasks = []
         for client in self.clients_info:
-            if client != sender_address:
-                tasks.append(self.send_rtp_to_client(data, client, data_type, sender_address))
-        if tasks:
-            await asyncio.gather(*tasks)
+            # if client != sender_address:
+                # tasks.append(self.send_rtp_to_client(data, client, data_type, sender_address))
+                self.send_rtp_to_client(data, client, data_type, sender_address)
+        # if tasks:
+        #     await asyncio.gather(*tasks)
 
     def handle_video_frame(self, data):
         """
@@ -216,12 +239,13 @@ class ConferenceServer:
             # 在图像上显示“server”字样
             cv2.putText(img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.imshow('server', img)
+            
     def handle_audio_data(self, data):
         """
         播放从客户端接收的音频数据
         """
         self.audio_stream.write(data)
-        print("Audio Data Received")
+        print("Audio Data Received")        
 
     def close(self):
         """
@@ -230,6 +254,7 @@ class ConferenceServer:
         self.text_transport.close()
         self.audio_transport.close()
         self.video_transport.close()
+        self.screen_transport.close()
         self.audio_stream.stop_stream()
         self.audio_stream.close()
         self.P.terminate()
@@ -278,13 +303,19 @@ class RTPProtocol(asyncio.DatagramProtocol):
         print(f"{self.data_type.capitalize()} RTPProtocol has been established.")
 
     def datagram_received(self, data, addr):
-        asyncio.create_task(self.server.forward_rtp_data(data,addr,self.data_type))
+        # print(f"received data from {addr}")
+        # self.server.add_client(addr)
         if self.data_type == 'video':
             # self.server.handle_video_frame(data)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 return
         elif self.data_type == 'audio':
             self.server.handle_audio_data(data)
+        elif self.data_type == 'screen':
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                return
+        # TODO:
+        self.server.forward_rtp_data(data, addr, self.data_type)
 
     def error_received(self, exc):
         print(f"{self.data_type.capitalize()} RTPProtocol 接收到错误: {exc}")

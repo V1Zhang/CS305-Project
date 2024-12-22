@@ -17,10 +17,13 @@ from time import time
 import RtpPacket
 import pydub
 import random
-
+import base64
+import pyautogui
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+import socketio as SOCKET
+
 # TODO: 文字传输改为TCP
 
 
@@ -44,11 +47,20 @@ class ConferenceClient:
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.Socket.bind(('0.0.0.0', 0))
 
-        # GUI setup
+
+        # 前后端通信的端口
+        async_mode = "eventlet"
         self.app = Flask(__name__)
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app,async_mode=async_mode, cors_allowed_origins="*")
         threading.Thread(target=self.run_flask_server, daemon=True).start()
         CORS(self.app)
+
+        # client和server通信的端口
+        self.sio = SOCKET.Client()
+        self.register_socketio_events()
+
+
+
         
         
         ## video part
@@ -60,6 +72,12 @@ class ConferenceClient:
         self.P = None
         self.audio_thread = None
         self.audio_running = False
+        
+        # screen share
+        self.screen_share_thread = None
+        self.screen_share_running = False
+        self.screen_data = {}
+        self.screen_share_client = None
 
     
     
@@ -138,6 +156,7 @@ class ConferenceClient:
         def join_conference_route():
             try:
                 conference_id = request.get_json().get('conferenceId')
+                print(conference_id)
                 self.join_conference(conference_id)  # 调用类中的创建会议方法
                 return jsonify({
                     "status": "success",
@@ -172,6 +191,7 @@ class ConferenceClient:
         
         @self.app.route('/send_message', methods=['POST'])       
         def send_text_message():
+            print('yes')
             if not self.conference_id:
                 return jsonify({
                     "status": "error",
@@ -181,10 +201,11 @@ class ConferenceClient:
             if message:
                 try:
                     data = f"TEXT {message}".encode()
-                    self.Socket.sendto(data, (config.SERVER_IP, self.conference_port))
+                    print(data)
+                    self.Socket.sendto(data, (config.SERVER_IP,config.MAIN_SERVER_PORT ))
                     return jsonify({
                     "status": "success",
-                    "message": f"Send TEXT {message}"
+                    "message": f"Send TEXT {data}"
                     }), 200
                 except Exception as e:
                     return jsonify({
@@ -208,13 +229,13 @@ class ConferenceClient:
                 self.video_thread.start()
                 return jsonify({
                     "status": "success",
-                    "message": f"video start"
+                    "message": f"video stop"
                     }), 200
             else:
                 self.video_running = False
                 return jsonify({
                     "status": "success",
-                    "message": f"video stop"
+                    "message": f"video start"
                     }), 200
                
         @self.app.route('/toggle_audio_stream', methods=['POST'])
@@ -240,6 +261,60 @@ class ConferenceClient:
                     "status": "success",
                     "message": f"audio stop"
                     }), 200
+                
+        @self.app.route('/toggle_screen_share', methods=['POST'])       
+        def toggle_screen_share():
+            if not self.conference_id:
+                return jsonify({
+                    "status": "error",
+                    "message": f"You are not in a conference."
+                    }), 500
+            if not self.screen_share_running:
+                self.screen_share_running = True
+                self.screen_share_thread = threading.Thread(target=self.send_screen_share, daemon=True)
+                self.screen_share_thread.start()
+                return jsonify({
+                    "status": "success",
+                    "message": f"screen share start"
+                    }), 200
+            else:
+                self.screen_share_running = False
+                return jsonify({
+                    "status": "success",
+                    "message": f"screen share stop"
+                    }), 200
+      
+                
+            
+        # @self.socketio.on('connect')
+        # def handle_connect():
+        #     print("Client connected")
+        @self.socketio.on('connect')
+        def handle_connect():
+            print('Client connected with SID:', request.sid)  # 打印连接用户的 SID
+
+    def register_socketio_events(self):
+
+        @self.sio.event
+        def connect():
+            print("Connected to server")
+        
+        @self.sio.on('client_info')
+        def handle_client_info(data):
+            pass
+
+           
+        
+        @self.sio.event
+        def disconnect():
+            print("Disconnected from server")
+
+        @self.sio.on('video_frame')
+        def handle_video_stream(data):
+            """Handle incoming video stream."""
+            pass
+            
+
 
 
        
@@ -260,6 +335,9 @@ class ConferenceClient:
                     data = message.encode()
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
+                    IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+                    print(IP)
+                    self.sio.connect(IP)
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -283,6 +361,7 @@ class ConferenceClient:
             data = message.encode()
             self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
             text_output = f"Sent: {message}\n"
+            self.conference_id=conference_id
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
@@ -317,30 +396,22 @@ class ConferenceClient:
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-        addr = (config.SERVER_IP, self.conference_video_port)
-
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.video_running = True
 
         while self.video_running:
             _, img = self.cap.read()
+            # img = cv2.imread(self.image_path)
             img = cv2.flip(img, 1)
-           
-            if img is None:
-                return
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            video_data = send_data.tobytes()
-            self.Socket.sendto(video_data, addr)
-            # Convert OpenCV image to PIL image for Tkinter
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img_pil = Image.fromarray(img_rgb)
-            # img_tk = ImageTk.PhotoImage(img_pil)
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # Send video frame via Socket.IO
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid})
 
-        # When video stops, release the capture and clear the video label
         self.cap.release()
+        cv2.destroyAllWindows()
 
     def receive_video_stream(self, video_data,client_address):
         """
@@ -353,10 +424,6 @@ class ConferenceClient:
         
         is_sharing_screen = False
 
-
-
-        
-        
 
     def process_video_queue(self):
         """
@@ -373,13 +440,12 @@ class ConferenceClient:
                 img_io = io.BytesIO()
                 img_pil.save(img_io, 'JPEG')
                 img_io.seek(0)
-                
                 # Base64 encode the video frame for WebSocket transmission
                 base64_frame = io.BytesIO(img_io.read()).getvalue()
-            
+                print('send')
                 # Emit the video stream to front-end
                 self.socketio.emit('video-stream', {
-                    'clientAddress': client_address,
+                    'clientAddress': self.socketio.sid,
                     'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
                 })
 
@@ -420,6 +486,43 @@ class ConferenceClient:
         self.P.terminate()
 
 
+    def send_screen_share(self):
+        """Capture the screen and send it periodically to the server."""
+        while self.screen_share_running:
+            # 捕捉屏幕
+            screenshot = pyautogui.screenshot()
+            screenshot = screenshot.resize((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+            # screenshot.save('screenshot.png') 
+           
+            # 将屏幕截图转换为字节流
+            img_byte_arr = io.BytesIO()
+            screenshot.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+
+            # 压缩图像并编码为 base64
+            screen_data = base64.b64encode(img_byte_arr).decode('utf-8')
+            # 使用 socket.io 发送屏幕截图
+            self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid})
+
+            
+    def receive_screen_share(self, screen_data, client_address):
+        """Receive and display a shared screen image."""
+        print(screen_data)
+        self.screen_data = screen_data
+        self.screen_share_client = client_address
+        
+    def process_screen_share(self):  
+        # print(self.screen_data)
+        if self.screen_data:
+            
+            frame_data = base64.b64decode(self.screen_data['frame'])
+            base64_frame = io.BytesIO(frame_data).getvalue()
+
+            self.socketio.emit('video-stream', {
+                    'clientAddress': self.socketio.sid,
+                    'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
+                })
+
    
             
             
@@ -431,6 +534,7 @@ class ConferenceClient:
         self.is_working = False
         self.video_running = False
         self.audio_running = False
+        self.screen_running = False
         for thread in self.threads.values():
             thread.join(timeout=1)
         if self.P:
