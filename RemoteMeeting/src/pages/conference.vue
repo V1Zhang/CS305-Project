@@ -246,16 +246,10 @@
                 });
 
                 if (response.data.status === 'success') {
-                    this.audioStreamStatus = !this.audioStreamStatus;
-                    this.audioButtonText = this.audioStreamStatus ? "Stop Audio Stream" : "Start Audio Stream";
-                    if (this.audioStreamStatus) {
-                        console.log('Audio stream started successfully.');
-                    } else {
-                        console.log('Audio stream stopped successfully.');
-                    }
+                    this.audioButtonText = "Stop Audio Stream" 
+                   
                 } else {
-                // 如果后端返回错误，打印错误信息
-                console.error('Error toggling audio stream:', response.data.message);
+                    this.audioButtonText = "Start Audio Stream"
                 }
             } catch (error) {
                 // 捕获并打印错误信息
