@@ -155,29 +155,25 @@
 
         handleIncomingVideoStream(data) {
           const { frame: videoFrame, sender_id: clientAddress } = data; // 确保字段名称与后端一致
-          // console.log(`Received video frame from client: ${clientAddress}`);
-
-          // const decoder = new TextDecoder('utf-8');  // Specify UTF-8 encoding
-          // const decodedFrame = decoder.decode(videoFrame);  // Decode the binary data
-
+        
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
           );
 
-          // if (!existingStream) {
-          //   // 新增一个视频窗口
-          //   this.videoStreams.push({
-          //     clientAddress,
-          //     videoFrame, // Base64 格式的视频帧
-          //   });
-          // } else {
-          //   const player = document.getElementById('currentImage');
-          //   player.src='data:image/jpeg;base64,'+videoFrame;
-          // }
+          if (existingStream) {
+            // 如果已存在该客户端的视频流，更新视频帧
+            existingStream.videoFrame = videoFrame;
+          } else {
+            // 如果该客户端的视频流不存在，新增视频流
+            this.videoStreams.push({
+              clientAddress,
+              videoFrame
+            });
+          }
 
-            const player = document.getElementById('player');
-            player.src='data:image/jpeg;base64,'+videoFrame;
+            // const player = document.getElementById('player');
+            // player.src='data:image/jpeg;base64,'+videoFrame;
 
       
         },
@@ -401,8 +397,8 @@
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
 }
 .camera-container img {
-  max-width: 10%;
-  max-height: 10%;
+  max-width: 30%;
+  max-height: 30%;
   object-fit: contain;
 }
 .screen-share-container {
