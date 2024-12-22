@@ -3,7 +3,7 @@ HELP = 'Create         : create an conference\n' \
        'Quit           : quit an on-going conference\n' \
        'Cancel         : cancel your on-going conference (only the manager)\n\n'
 
-SERVER_IP = '127.0.0.1'
+SERVER_IP = '10.32.25.161'
 MAIN_SERVER_PORT = 7000
 TIMEOUT_SERVER = 5
 # DGRAM_SIZE = 1500  # UDP
@@ -12,8 +12,6 @@ LOG_INTERVAL = 2
 CHUNK = 1024
 CHANNELS = 1  # Channels for audio capture
 RATE = 44100  # Sampling rate for audio capture
-
-camera_width, camera_height = 480, 480  # resolution for camera capture
 
 # Broadcast Information
 BROADCAST_JOIN = 0

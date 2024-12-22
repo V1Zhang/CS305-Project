@@ -164,6 +164,9 @@ class MainServer:
                 elif header == "AUDIO":
                     self.audio_stream.write(payload)
                     print("Audio data received .")
+                elif header == "SHARE":   
+                    # 解码接收到的图像数据
+                    frame_data = np.frombuffer(payload, dtype='uint8')
                 elif header == "CREAT":
                     message = payload.decode()
                     print(f"Create conference {message} request received.")
@@ -171,7 +174,7 @@ class MainServer:
                     reply = f"You have been assigned to conference {message}"
                     print(self.conference_servers[int(message)].udp_port)
                     self.serverSocket.sendto(encode_message("TEXT ",self.conference_servers[int(message)].udp_port,reply), client_address)
-                    port_message = f"{self.conference_servers[int(message)].audio_rtp_port} {self.conference_servers[int(message)].video_rtp_port}"
+                    port_message = f"{self.conference_servers[int(message)].audio_rtp_port} {self.conference_servers[int(message)].video_rtp_port} {self.conference_servers[int(message)].screen_rtp_port}"
                     self.serverSocket.sendto(encode_message("CREAT", self.conference_servers[int(message)].udp_port,port_message),client_address)
                 elif header == "JOIN ":
                     message = payload.decode()
@@ -181,7 +184,7 @@ class MainServer:
                         reply = f"OK:{message}"
                         self.serverSocket.sendto(encode_message("JOIN ", self.conference_servers[int(message)].udp_port, reply), client_address)
                         self.conference_servers[int(message)].clients_info.append(client_address)
-                        port_message = f"{self.conference_servers[int(message)].audio_rtp_port} {self.conference_servers[int(message)].video_rtp_port}"
+                        port_message = f"{self.conference_servers[int(message)].audio_rtp_port} {self.conference_servers[int(message)].video_rtp_port} {self.conference_servers[int(message)].screen_rtp_port}"
                         self.serverSocket.sendto(encode_message("CREAT", self.conference_servers[int(message)].udp_port,port_message),client_address)
                         self.conference_servers[int(message)].broadcast_info(f"{client_address} has joined the conference.",BROADCAST_JOIN)
                     else:
@@ -272,6 +275,19 @@ class MainServer:
                 'sender_id': sid  # Use the Socket.IO sid as the sender identifier
             }
             self.sio.emit('video_frame', frame_with_sender)
+            
+        @self.sio.on('screen_frame')
+        def handle_screen_share(sid, data):
+            """
+            Handle incoming screen share frames and broadcast to all other clients.
+            """
+            frame_with_sender = {
+                'frame': data['frame'],
+                'sender_id': sid  # Use the Socket.IO sid as the sender identifier
+            }
+            print(data['frame'])
+            self.sio.emit('screen_frame', frame_with_sender)
+
 
 
 
