@@ -2,17 +2,8 @@
   <div>
     <v-header/>
     <div id="page_container" style="text-align: center;">
-      <div class="container">
-        <transition name="scroll">
-          <div class="sentence" v-if="currentSentence">{{ currentSentence }}</div>
-        </transition>
-      </div>
-      <div class="sport">
-        <img src="../assets/icon/sport.svg" alt="sport icon" class="sport-icon">
-        Start Training Now!
-      </div>
-      <div class="action-list" v-if="!videoVisible">
-        <div v-for="action in actions" style="display: flex; justify-content: space-between; align-items: center;">
+      <div class="action-list">
+        <div v-for="action in actions" :key="action.id" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="action-item"
                :key="action.id"
                :data-id="action.id"
@@ -28,78 +19,49 @@
         </div>
       </div>
     </div>
+    <div v-if="showJoinModal" class="modal">
+      <div class="modal-content">
+        <h2>Join Meeting</h2>
+        <input v-model="conferenceId" type="text" placeholder="Enter conference ID" />
+        <button @click="joinConference">Join</button>
+        <button @click="closeModal">Cancel</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import img1 from '../assets/img/foream_plank.png'
-import img5 from '../assets/img/left_right_bridge.png'
-import {useMainStore} from '../store/data.ts';
 import vHeader from '../components/header.vue';
+import axios from 'axios';
 
-const mainStore = useMainStore()
+
 export default {
   components: {
     vHeader
   },
   data() {
     return {
-      sentences: [
-        "Good morning! Exercise makes the day better!",
-        "Keep pushing, you're doing great!",
-        "Stay active, stay healthy!",
-        "Fitness is not a destination, it's a way of life.",
-        "Believe in yourself and all that you are.",
-        "A little progress each day adds up to big results.",
-        "Stay positive, work hard, make it happen.",
-        "Your body can stand almost anything. It’s your mind that you have to convince.",
-        "Don't limit your challenges, challenge your limits.",
-        "Strive for progress, not perfection."
-      ],
-      currentSentence: '',
       index: 0,
       selectedAction: null,
-      selectedActionVideo: null,
       actions: [
         {
           id: 1,
           name: ' Create Meeting',
-          imageUrl: img1
         },
         {
           id: 2,
           name: ' Join Meeting',
-          imageUrl: img5
-        },
-      ]
+        }
+      ],
+      showJoinModal: false, // Controls the modal visibility
+      conferenceId: "" // Holds the conference ID input by the user
     }
   },
   created() {
-    this.updateSentence();
+    // this.updateSentence();
     setInterval(this.updateSentence, 5000);
   },
   methods: {
-    getVideoSrcById(videoId) {
-      const videoMap = {
-        'Foream Plank': video1,
-        'Sumo Glute Bridge': video2
-      };
-      return videoMap[videoId] || '';
-    },
-    showVideo() {
-      this.videoVisible = true;
-      this.$nextTick(() => {
-        this.$refs.video.play();
-      });
-    },
-    closeVideo() {
-      this.videoVisible = false;
-      this.$refs.video.pause();
-    },
-    updateSentence() {
-      this.currentSentence = this.sentences[this.index];
-      this.index = (this.index + 1) % this.sentences.length;
-    },
     selectAction(action) {
       this.selectedAction = action;
     },
@@ -108,26 +70,68 @@ export default {
         this.selectedAction = null;
       }
     },
-    selectActionVideo(action) {
-      this.selectedActionVideo = action;
-    },
-    deselectActionVideo(action) {
-      if (this.selectedActionVideo === action) {
-        this.selectedActionVideo = null;
+    async handleActionClick(action) {
+      if (action.id === 1) {  //  "Create Meeting"
+      try {
+            // 发送 POST 请求到后端的 create_conference 方法
+            const response = await axios.post('http://127.0.0.1:7777/create_conference', {
+            // 如果需要传递参数，可以在这里添加
+            userId: "user123", // 示例数据
+            });
+
+            if (response.status === 200) {
+            console.log("Conference Created: ", response.data);
+            // 可以做一些状态更新，比如更新界面上的状态
+            } else {
+            console.error("Failed to create conference", response.data);
+            }
+        } catch (error) {
+            console.error("Error creating conference:", error);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.$router.push('/conference');
+
+
+      } else if (action.id === 2) {  //  "Join Meeting"
+      this.showJoinModal = true; // Show the modal to input conference ID
       }
     },
-    async handleActionClick(action) {
-      console.log(`Selected action: ${action.name}`);
-      mainStore.update({text: action.id, name: action.name});
-      await new Promise(resolve => setTimeout(resolve, 500));
-      this.$router.push('/interaction');
+
+    async joinConference() {
+      // 检查用户输入的会议ID是否为空
+      if (!this.conferenceId) {
+        alert("Please enter a valid conference ID.");
+        return;
+      }
+
+      try {
+        const response = await axios.post('http://127.0.0.1:7777/join_conference', {
+          userId: "user123", // 示例数据
+          conferenceId: this.conferenceId // 用户输入的会议ID
+        });
+
+        if (response.status === 200) {
+          console.log("Joined Conference: ", response.data);
+          // 更新UI（例如：加入成功后显示会议详情或状态）
+          this.showJoinModal = false; // 成功后关闭模态框
+          await new Promise(resolve => setTimeout(resolve, 500));
+          this.$router.push('/conference');
+        } else {
+          console.error("Failed to join conference", response.data);
+          alert("Failed to join conference. Please try again.");
+        }
+      } catch (error) {
+        console.error("Error joining conference:", error);
+        alert("Error joining conference. Please try again.");
+      }
     },
-    handleActionVideoClick(action) {
-      console.log(`Selected action: ${action.name}`);
-      this.videoSrc = this.getVideoSrcById(action.name);
-      this.showVideo();
+
+    closeModal() {
+      this.showJoinModal = false; // 关闭模态框
+      this.conferenceId = ""; // 清空输入框
     }
-  }
+  },
+  
 }
 </script>
 
@@ -155,20 +159,6 @@ export default {
   font-size: 29px;
   display: flex;
   align-items: center;
-}
-
-.sport {
-  font-size: 27px;
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
-  font-weight: bolder;
-}
-
-.sport-icon {
-  margin-right: 10px;
-  height: 52px;
-  width: 52px;
 }
 
 .action-list {
@@ -288,5 +278,35 @@ video {
 .close-button:hover {
   background-color: #00a152;
   transform: scale(1.5);
+}
+
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.2);
+  width: 300px;
+}
+
+input {
+  width: 100%;
+  padding: 8px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 </style>

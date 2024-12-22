@@ -133,7 +133,7 @@ class ConferenceClient:
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
 
-    def receive_text_message(self):
+    def receive_message(self):
         while self.is_working:
             try:
                 data, server_address = self.Socket.recvfrom(921600)
@@ -182,11 +182,14 @@ class ConferenceClient:
                         messagebox.showwarning("Warning", f"Join conference {conference_id} failed.")
                         break
                     self.join_conference(conference_id)
-                elif header == "CANCE":
+                elif header == "QUIT ":
                     self.text_output.insert(tk.END, f"Received: {payload}\n")
-                    # self.cancel_conference()
-                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
                     self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
+                elif header == "LEAVE":
+                    self.text_output.insert(tk.END, f"Received: {payload}\n")
+                    self.quit_conference()
+                    # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
@@ -403,7 +406,7 @@ class ConferenceClient:
         if not self.conference_id:
             conference_id = simpledialog.askstring("Join Conference", "Enter conference ID:")
             if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+                host_thread = threading.Thread(target=self.receive_message, daemon=True)
                 host_thread.start()
                 self.threads['host'] = host_thread
                 self.update_status(f"On Meeting {conference_id}")
@@ -416,6 +419,7 @@ class ConferenceClient:
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     self.text_output.insert(tk.END, f"Sent: {message}\n")
                     IP= 'http://'+config.SERVER_IP+ ":" + str(config.MAIN_SERVER_PORT)
+                    
                     self.sio.connect(IP)
                 except Exception as e:
                     messagebox.showerror("Error", f"Error sending message: {e}")
@@ -436,7 +440,7 @@ class ConferenceClient:
                 self.text_output.insert(tk.END, f"Sent: {message}\n")
             except Exception as e:
                 messagebox.showerror("Error", f"Error sending message: {e}")
-            guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
+            guest_thread = threading.Thread(target=self.receive_message, daemon=True)
             guest_thread.start()
         else:
             messagebox.showwarning("Invalid Input", "Conference ID must be a valid number.")
@@ -464,10 +468,6 @@ class ConferenceClient:
         self.join_success.clear()
         self.update_status("Free")
         self.text_output.insert(tk.END, "Left the conference.\n")
-
-    def cancel_conference(self):
-        self.update_status("Free")
-        self.text_output.insert(tk.END, "Conference cancelled.\n")
 
     def start(self):
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -555,3 +555,4 @@ if __name__ == '__main__':
     client1 = ConferenceClient()
     # print(client1.Socket.getsockname())
     client1.start()
+
