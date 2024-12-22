@@ -345,6 +345,7 @@ class ConferenceClient:
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     self.text_output.insert(tk.END, f"Sent: {message}\n")
                     IP= 'http://'+config.SERVER_IP+ ":" + str(config.MAIN_SERVER_PORT)
+                    
                     self.sio.connect(IP)
                 except Exception as e:
                     messagebox.showerror("Error", f"Error sending message: {e}")

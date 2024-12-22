@@ -16,20 +16,7 @@
           </button>
         </div>
         <div class="video-container">
-          <div
-            v-for="(stream, index) in videoStreams"
-            :key="index"
-            class="video-stream-window"
-          >
-            <h3>{{ stream.clientAddress }}</h3>
-            <video
-              :ref="'video_' + index"
-              autoplay
-              playsinline
-              muted
-              class="video-element"
-            ></video>
-          </div>
+          <img id="player" style="width:704px;height:576px"/>
         </div>
       </div>
 
@@ -80,17 +67,22 @@
       }
     },
     created() {
-      this.socket = io('http://127.0.0.1:7777');
+      this.socket = io('http://127.0.0.1:7000');
 
       this.socket.on('connect', () => {
         console.log('Connected to server');
+        console.log('Client SID:', this.socket.id); // 打印客户端的 SID
+      });
+      this.socket.on('disconnect', () => {
+        console.log('Disconnected to server');
       });
       this.socket.on('message', (data) => {
+        console.log('Received message:');
         this.handleIncomingMessage(data);
       });
-      
-      this.socket.on('video-stream', (data) => {
-        console.log('Video stream')
+
+      this.socket.on('video_frame', (data) => {
+        // console.log('Video stream')
         this.handleIncomingVideoStream(data);
       });
 
@@ -128,26 +120,34 @@
         },
 
         handleIncomingVideoStream(data) {
-          console.log(data)
-          const { clientAddress, videoFrame } = data;
+          const { frame: videoFrame, sender_id: clientAddress } = data; // 确保字段名称与后端一致
+          // console.log(`Received video frame from client: ${clientAddress}`);
+
+          // const decoder = new TextDecoder('utf-8');  // Specify UTF-8 encoding
+          // const decodedFrame = decoder.decode(videoFrame);  // Decode the binary data
 
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
           );
 
-          if (!existingStream) {
-            // 新增一个视频窗口
-            this.videoStreams.push({
-              clientAddress,
-              videoFrame, // Base64 格式的视频帧
-            });
-          } else {
-            // 更新现有的视频帧
-            existingStream.videoFrame = videoFrame;
-          }
+          // if (!existingStream) {
+          //   // 新增一个视频窗口
+          //   this.videoStreams.push({
+          //     clientAddress,
+          //     videoFrame, // Base64 格式的视频帧
+          //   });
+          // } else {
+          //   const player = document.getElementById('currentImage');
+          //   player.src='data:image/jpeg;base64,'+videoFrame;
+          // }
+
+            const player = document.getElementById('player');
+            player.src='data:image/jpeg;base64,'+videoFrame;
+
+      
         },
-    
+
 
 
 

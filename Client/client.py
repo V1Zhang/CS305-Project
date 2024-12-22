@@ -22,6 +22,8 @@ import base64
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+import socketio as SOCKET
+
 # TODO: 文字传输改为TCP
 
 
@@ -45,11 +47,20 @@ class ConferenceClient:
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.Socket.bind(('0.0.0.0', 0))
 
-        # GUI setup
+
+        # 前后端通信的端口
+        async_mode = "eventlet"
         self.app = Flask(__name__)
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app,async_mode=async_mode, cors_allowed_origins="*")
         threading.Thread(target=self.run_flask_server, daemon=True).start()
         CORS(self.app)
+
+        # client和server通信的端口
+        self.sio = SOCKET.Client()
+        self.register_socketio_events()
+
+
+
         
         
         ## video part
@@ -212,13 +223,13 @@ class ConferenceClient:
                 self.video_thread.start()
                 return jsonify({
                     "status": "success",
-                    "message": f"video start"
+                    "message": f"video stop"
                     }), 200
             else:
                 self.video_running = False
                 return jsonify({
                     "status": "success",
-                    "message": f"video stop"
+                    "message": f"video start"
                     }), 200
                
         @self.app.route('/toggle_audio_stream', methods=['POST'])
@@ -245,9 +256,33 @@ class ConferenceClient:
                     "message": f"audio stop"
                     }), 200
             
+        # @self.socketio.on('connect')
+        # def handle_connect():
+        #     print("Client connected")
         @self.socketio.on('connect')
         def handle_connect():
-            print("Client connected")
+            print('Client connected with SID:', request.sid)  # 打印连接用户的 SID
+
+    def register_socketio_events(self):
+
+        @self.sio.event
+        def connect():
+            print("Connected to server")
+        
+        @self.sio.on('client_info')
+        def handle_client_info(data):
+            pass
+
+           
+        
+        @self.sio.event
+        def disconnect():
+            print("Disconnected from server")
+
+        @self.sio.on('video_frame')
+        def handle_video_stream(data):
+            """Handle incoming video stream."""
+            pass
 
 
 
@@ -269,6 +304,9 @@ class ConferenceClient:
                     data = message.encode()
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
+                    IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+                    print(IP)
+                    self.sio.connect(IP)
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -327,37 +365,22 @@ class ConferenceClient:
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-        addr = (config.SERVER_IP, self.conference_video_port)
-
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.video_running = True
 
         while self.video_running:
             _, img = self.cap.read()
+            # img = cv2.imread(self.image_path)
             img = cv2.flip(img, 1)
-           
-            if img is None:
-                return
-            _, send_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            video_data = send_data.tobytes()
-            # TODO: 暂时不发送用来测试前端视频窗口，这里发送的端口可以改成socketio
-            # self.Socket.sendto(video_data, addr)
-            video_data = base64.b64encode(video_data).decode('utf-8')
-            # Emit the video stream to front-end
-            self.socketio.emit('video-stream', {
-                'videoFrame': video_data # Send binary data as string
-            })
-            print('send')
-            # Convert OpenCV image to PIL image for Tkinter
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img_pil = Image.fromarray(img_rgb)
-            # img_tk = ImageTk.PhotoImage(img_pil)
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # Send video frame via Socket.IO
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid})
 
-        # When video stops, release the capture and clear the video label
         self.cap.release()
+        cv2.destroyAllWindows()
 
     def receive_video_stream(self, video_data,client_address):
         """

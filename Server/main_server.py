@@ -33,7 +33,7 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet')
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins="http://localhost:5173")
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
