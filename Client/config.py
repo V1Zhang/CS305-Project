@@ -3,8 +3,8 @@ HELP = 'Create         : create an conference\n' \
        'Quit           : quit an on-going conference\n' \
        'Cancel         : cancel your on-going conference (only the manager)\n\n'
 
-SERVER_IP = '10.32.25.161'
-MAIN_SERVER_PORT = 7777
+SERVER_IP = '127.0.0.1'
+MAIN_SERVER_PORT = 7776
 SERVER_IP_LOGIC = '127.0.0.1'
 MAIN_SERVER_PORT_LOGIC = 7000
 

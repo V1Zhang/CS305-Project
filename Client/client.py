@@ -24,7 +24,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import socketio as SOCKET
 
-# TODO: 文字传输改为TCP
+
 
 
 class ConferenceClient:
@@ -58,6 +58,9 @@ class ConferenceClient:
         # client和server通信的端口
         self.sio = SOCKET.Client()
         self.register_socketio_events()
+        IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+        print(IP)
+        self.sio.connect(IP)
 
 
 
@@ -351,9 +354,9 @@ class ConferenceClient:
                     data = message.encode()
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
-                    IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-                    print(IP)
-                    self.sio.connect(IP)
+                    # IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+                    # print(IP)
+                    # self.sio.connect(IP)
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
