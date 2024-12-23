@@ -294,7 +294,7 @@ class MainServer:
                 'frame': data['frame'],
                 'sender_id': sid  # Use the Socket.IO sid as the sender identifier
             }
-            print(data['frame'])
+
             self.sio.emit('screen_frame', frame_with_sender)
 
 

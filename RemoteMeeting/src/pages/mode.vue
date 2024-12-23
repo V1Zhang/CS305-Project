@@ -11,9 +11,6 @@
                @mouseleave="deselectAction(action)"
                @click="handleActionClick(action)"
                :style="{ backgroundColor: action === selectedAction ? ' #191970' : '#FFFFFF', color: action === selectedAction ? 'white' : '#000000'}">
-            <button class="action-image">
-              <img :src="action.imageUrl" :alt="action.name">
-            </button>
             <div class="action-text">{{ action.name }}</div>
           </div>
         </div>
@@ -174,7 +171,7 @@ export default {
   width: 290px;
   border: 3px solid #FFFFFF; /* 设置按钮的边界粗细和颜色 */
   margin-top: 17px; /* 设置合适的上部外框的宽度 */
-  text-align: center;
+  justify-content: center;
   color: #FFFFFF;
   line-height: 30px;
   border-radius: 30px; /* 将按钮的左右边框设置为圆弧 */
@@ -209,18 +206,8 @@ export default {
   transform: scale(1.2);
 }
 
-.action-image {
-  width: 50px;
-  height: 50px;
-  margin-left: 10px;
-  margin-right: 20px;
-}
 
-.action-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+
 
 .action-video {
   border-radius: 22px;

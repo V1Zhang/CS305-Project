@@ -25,7 +25,8 @@
           <!-- 用户名 -->
           <div class="username">
             <img src="../assets/icon/user.svg" alt="user icon" class="user-icon">
-            Hello, {{ username }} !
+            <!-- Hello, {{ username }} ! -->
+            Hello, Welcome to Remote Meeting!
           </div>
         </div>
       </div>

@@ -58,10 +58,6 @@ class ConferenceClient:
         # client和server通信的端口
         self.sio = SOCKET.Client()
         self.register_socketio_events()
-
-
-
-        
         
         ## video part
         self.cap = None
@@ -138,7 +134,6 @@ class ConferenceClient:
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
-
  
         
     def run_flask_server(self):
@@ -229,8 +224,6 @@ class ConferenceClient:
                     "status": "error",
                     "message": f"You are not in a conference."
                     }), 500
-            action = request.get_json().get('action')
-            self.video_running = False if action=='start' else True
             if not self.video_running:
                 self.video_running = True
                 self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
@@ -313,8 +306,8 @@ class ConferenceClient:
            
         
         @self.sio.event
-        def disconnect():
-            print("Disconnected from server")
+        def disconnect(reason=None):
+            print(f"Disconnected from server. Reason: {reason}")
 
         @self.sio.on('video_frame')
         def handle_video_stream(data):
@@ -328,7 +321,7 @@ class ConferenceClient:
             audio_data = base64.b64decode(data)
             self.audio_stream_write.write(audio_data)
                 
-            
+    
 
 
 

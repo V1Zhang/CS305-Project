@@ -9,32 +9,24 @@ const routes: RouteRecordRaw[] = [
         children: [
             {
                 path: '',
-                redirect: '/login',
-            },
-            {
-                path: '/login',
-                name: 'Login',
-                meta: {
-                    title: '登录',
-                },
-                component: () => import(/* webpackChunkName: "login" */ '../pages/login.vue'),
+                redirect: '/mode',
             },
             {
                 path: '/mode',
                 name: 'Mode',
                 meta: {
-                    title: '模式选择',
-                    permiss: '2',
+                    title: '登录',
                 },
                 component: () => import(/* webpackChunkName: "mode" */ '../pages/mode.vue'),
             },
+           
             {
                 // path: '/interaction',
                 path: '/conference',
                 name: 'Interaction',
                 meta: {
-                    title: '运动交互',
-                    permiss: '3',
+                    title: 'On Meeting',
+                    permiss: '2',
                 },
                 component: () => import(/* webpackChunkName: "mode" */ '../pages/conference.vue'),
             },

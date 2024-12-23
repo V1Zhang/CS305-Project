@@ -21,9 +21,6 @@
             <span class="action-icon">🚪</span> {{ isHost ? 'End Meeting' : 'Quit Meeting' }}
           </button>
         </div>
-        <!-- <div class="video-container">
-          <img id="player" style="width:704px;height:576px"/>
-        </div> -->
         <!-- 视频显示区域 -->
         <div class="video-container">
           <div class="camera-container">
@@ -38,7 +35,7 @@
           <!-- 屏幕共享区 -->
           <div class="screen-share-container">
             <div class="video-header">Screen Share</div>
-            <img id="player" style="width:704px;height:576px"/>
+            <img id="player" style="width:904px;height:576px"/>
           </div>
         </div>
       </div>
@@ -67,19 +64,19 @@
 </template>
   
   <script>
+  import img from '../assets/img/off.jpg'
   import vHeader from '../components/header.vue';
-  import vVideo from '../components/video.vue';
   import axios from 'axios';
   import io from 'socket.io-client';
 
   export default {
     components: {
       vHeader,
-      vVideo
     },
     data() {
       return {        
         socket: null,
+        fallbackUrl: img,
         conferenceId: "",  
         isHost: true,
         videoButtonText: "Start Video Stream", 
@@ -96,7 +93,7 @@
       }
     },
     created() {
-      this.socket = io('http://127.0.0.1:7000');
+      this.socket = io('http://10.32.98.215:7000');
 
       this.socket.on('connect', () => {
         console.log('Connected to server');
@@ -120,7 +117,7 @@
       });
 
       this.socket.on('screen_frame', (data) => {
-      this.handleIncomingScreenShare(data); 
+        this.handleIncomingScreenShare(data); 
       });
 
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -171,10 +168,6 @@
               videoFrame
             });
           }
-
-            // const player = document.getElementById('player');
-            // player.src='data:image/jpeg;base64,'+videoFrame;
-
       
         },
 
@@ -186,13 +179,6 @@
             const player = document.getElementById('player');
             player.src='data:image/jpeg;base64,'+videoFrame;
         },
-
-
-
-
-
-
-
 
 
         async quitConference() {
@@ -221,12 +207,14 @@
                 });
 
                 if (response.data.status === 'success') {
-                this.videoStreamStatus = !this.videoStreamStatus;
-                this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
-                if (this.videoStreamStatus) {
-                    // 如果视频流启动，设定视频流的地址
-                    this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
-                }
+                  this.videoStreamStatus = !this.videoStreamStatus;
+                  this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
+                  if (this.videoStreamStatus) {
+                      // 如果视频流启动，设定视频流的地址
+                      this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
+                  }else {
+                    this.videoStreamUrl = this.fallbackUrl;
+                  }
                 } else {
                 console.error('Error toggling video stream:', response.data.message);
                 }
@@ -265,6 +253,11 @@
                     if (this.ScreenShareStatus) {
                         console.log('Screen Shrare started successfully.');
                     } else {
+                      // this.screenShareStream = null;
+                      // const player = document.getElementById('player');
+                      // if (player) {
+                      //   player.src = '';  // 清空屏幕共享区域的显示内容
+                      // }
                         console.log('Screen Shrare stopped successfully.');
                     }
                 } else {
@@ -392,13 +385,14 @@
 
 .camera-container {
   background-color: #f0f0f0;
+  flex-direction: row;
   border-radius: 8px;
   padding: 10px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
 }
 .camera-container img {
-  max-width: 30%;
-  max-height: 30%;
+  max-width: 25%;
+  max-height: 25%;
   object-fit: contain;
 }
 .screen-share-container {
