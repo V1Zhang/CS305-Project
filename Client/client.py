@@ -18,7 +18,7 @@ import RtpPacket
 import pydub
 import random
 import base64
-
+import pyautogui
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -73,6 +73,20 @@ class ConferenceClient:
         self.audio_thread = None
         self.audio_running = False
 
+        
+        # screen share
+        self.screen_share_thread = None
+        self.screen_share_running = False
+        self.screen_data = {}
+        self.screen_share_client = None
+    
+        self.audio_stream=None
+        self.p_write = pyaudio.PyAudio()
+        self.audio_stream_write = self.p_write.open(format=pyaudio.paInt16,  # 16-bit audio format
+                            channels=1,              # 单声道
+                            rate=44100,              # 采样率
+                            output=True,             # 输出模式
+                            frames_per_buffer=2048)  # 缓冲区大小
     
     
 
@@ -196,7 +210,7 @@ class ConferenceClient:
                 try:
                     data = f"TEXT {message}".encode()
                     print(data)
-                    self.Socket.sendto(data, (config.SERVER_IP,config.MAIN_SERVER_PORT ))
+                    self.Socket.sendto(data, (config.SERVER_IP_UDP,config.MAIN_SERVER_PORT_UDP))
                     return jsonify({
                     "status": "success",
                     "message": f"Send TEXT {data}"
@@ -215,8 +229,6 @@ class ConferenceClient:
                     "status": "error",
                     "message": f"You are not in a conference."
                     }), 500
-            action = request.get_json().get('action')
-            self.video_running = False if action=='start' else True
             if not self.video_running:
                 self.video_running = True
                 self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
@@ -240,21 +252,49 @@ class ConferenceClient:
                     "message": f"You are not in a conference."
                     }), 500
             action = request.get_json().get('action')
-            self.audio_running = False if action=='start' else True
-            if not self.audio_running:
+            if self.audio_running is None or self.audio_running==False:
                 self.audio_running = True
                 self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
                 self.audio_thread.start()
                 return jsonify({
                     "status": "success",
-                    "message": f"audio start"
+                    "message": f"audio stop"
                     }), 200
             else:
                 self.audio_running = False
                 return jsonify({
-                    "status": "success",
-                    "message": f"audio stop"
+                    "status": "shut",
+                    "message": f"audio start"
                     }), 200
+                
+        @self.app.route('/toggle_screen_share', methods=['POST'])       
+        def toggle_screen_share():
+            if not self.conference_id:
+                return jsonify({
+                    "status": "error",
+                    "message": f"You are not in a conference."
+                    }), 500
+            if not self.screen_share_running:
+                self.screen_share_running = True
+                self.screen_share_thread = threading.Thread(target=self.send_screen_share, daemon=True)
+                self.screen_share_thread.start()
+                return jsonify({
+                    "status": "success",
+                    "message": f"screen share start"
+                    }), 200
+            else:
+                self.screen_share_running = False
+                return jsonify({
+                    "status": "success",
+                    "message": f"screen share stop"
+                    }), 200
+            
+        @self.app.route('/get_room', methods=['GET'])
+        def get_room():
+            room_id = self.conference_id # 示例静态房间号
+            return jsonify({"room_id": room_id})
+      
+                
             
         # @self.socketio.on('connect')
         # def handle_connect():
@@ -263,27 +303,46 @@ class ConferenceClient:
         def handle_connect():
             print('Client connected with SID:', request.sid)  # 打印连接用户的 SID
 
+        
+
     def register_socketio_events(self):
+
 
         @self.sio.event
         def connect():
             print("Connected to server")
-        
+            print(self.sio.sid)
+            self.sio.emit('join_room', { 'room': self.conference_id })
+            threading.Thread(target=send_heartbeat, daemon=True).start()  # 启动心跳线程
+
+        def send_heartbeat():
+            while self.sio.connected:
+                self.sio.emit('heartbeat', {'message': 'ping'})
+                time.sleep(10)  # 每 10 秒发送一次心跳
+
         @self.sio.on('client_info')
         def handle_client_info(data):
             pass
 
-           
-        
         @self.sio.event
-        def disconnect():
-            print("Disconnected from server")
+        def disconnect(reason=None):
+            print(f"Disconnected from server. Reason: {reason}")
 
         @self.sio.on('video_frame')
         def handle_video_stream(data):
             """Handle incoming video stream."""
             pass
             
+
+        @self.sio.on('audio_stream')
+        def handle_audio_stream(data):
+            """Handle incoming audio stream.""" 
+            print('received audio stream')
+            audio_data = base64.b64decode(data)
+            self.audio_stream_write.write(audio_data)
+                
+            
+
 
 
 
@@ -306,8 +365,11 @@ class ConferenceClient:
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
                     IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-                    print(IP)
+                    print(IP) 
                     self.sio.connect(IP)
+                    # 加入对应房间
+                    # room = str(self.conference_id)  # 动态指定房间号
+                    # self.sio.connect(f"{IP}?room={room}")
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -332,6 +394,10 @@ class ConferenceClient:
             self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
             text_output = f"Sent: {message}\n"
             self.conference_id=conference_id
+            IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+            # 加入对应房间
+            room = str(self.conference_id)  # 动态指定房间号
+            self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
@@ -378,7 +444,7 @@ class ConferenceClient:
             video_data = base64.b64encode(buffer).decode('utf-8')
 
             # Send video frame via Socket.IO
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid})
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
 
         self.cap.release()
         cv2.destroyAllWindows()
@@ -391,67 +457,91 @@ class ConferenceClient:
         # TODO: 关闭视频流传输会让画面消失 关闭的时候也发送一条指令
         print("Receive video stream.")
         self.video_queue.put((video_data, client_address))
+        
+        is_sharing_screen = False
 
-    def process_video_queue(self):
-        """
-        Process video data from the queue and update the GUI.
-        """
-        while not self.video_queue.empty():
-            video_data, client_address = self.video_queue.get()
-            nparr = np.frombuffer(video_data, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img_pil = Image.fromarray(img_rgb)
+
+    # def process_video_queue(self):
+    #     """
+    #     Process video data from the queue and update the GUI.
+    #     """
+    #     while not self.video_queue.empty():
+    #         video_data, client_address = self.video_queue.get()
+    #         nparr = np.frombuffer(video_data, np.uint8)
+    #         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #         if img is not None:
+    #             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    #             img_pil = Image.fromarray(img_rgb)
                 
-                img_io = io.BytesIO()
-                img_pil.save(img_io, 'JPEG')
-                img_io.seek(0)
-                # Base64 encode the video frame for WebSocket transmission
-                base64_frame = io.BytesIO(img_io.read()).getvalue()
-                print('send')
-                # Emit the video stream to front-end
-                self.socketio.emit('video-stream', {
+    #             img_io = io.BytesIO()
+    #             img_pil.save(img_io, 'JPEG')
+    #             img_io.seek(0)
+    #             # Base64 encode the video frame for WebSocket transmission
+    #             base64_frame = io.BytesIO(img_io.read()).getvalue()
+    #             print('send')
+    #             # Emit the video stream to front-end
+    #             self.socketio.emit('video-stream', {
+    #                 'clientAddress': self.socketio.sid,
+    #                 'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
+    #             })
+
+
+
+    def send_audio_stream(self):
+        self.p = pyaudio.PyAudio()
+        self.audio_stream = self.p.open(format=pyaudio.paInt16,  # 16-bit audio format
+                            channels=1,              # 单声道
+                            rate=44100,              # 采样率
+                            input=True,              # 输入模式
+                            frames_per_buffer=4096)  # 缓冲区大小
+        while self.audio_running:
+            # 从麦克风读取音频数据
+            audio_data = self.audio_stream.read(2048)
+            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+            # 发送音频数据到服务器
+            self.sio.emit('audio_stream', {'data':encoded_audio,"room": str(self.conference_id)})
+
+        self.audio_stream.stop_stream()
+        self.audio_stream.close()
+        self.p.terminate()
+
+
+    def send_screen_share(self):
+        """Capture the screen and send it periodically to the server."""
+        while self.screen_share_running:
+            # 捕捉屏幕
+            screenshot = pyautogui.screenshot()
+            screenshot = screenshot.resize((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+            # screenshot.save('screenshot.png') 
+           
+            # 将屏幕截图转换为字节流
+            img_byte_arr = io.BytesIO()
+            screenshot.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+
+            # 压缩图像并编码为 base64
+            screen_data = base64.b64encode(img_byte_arr).decode('utf-8')
+            # 使用 socket.io 发送屏幕截图
+            self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
+
+            
+    def receive_screen_share(self, screen_data, client_address):
+        """Receive and display a shared screen image."""
+        print(screen_data)
+        self.screen_data = screen_data
+        self.screen_share_client = client_address
+        
+    def process_screen_share(self):  
+        # print(self.screen_data)
+        if self.screen_data:
+            
+            frame_data = base64.b64decode(self.screen_data['frame'])
+            base64_frame = io.BytesIO(frame_data).getvalue()
+
+            self.socketio.emit('video-stream', {
                     'clientAddress': self.socketio.sid,
                     'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
                 })
-
-    def receive_audio_stream(self, audio_data):
-        """
-        Receive audio stream from other clients and play it.
-        """
-        # TODO: 辨别多个client的音轨
-        try:
-            # Convert audio data to Base64 for WebSocket transmission
-            base64_audio = audio_data.hex()  # Convert binary to a hexadecimal string
-
-            # Emit audio stream to the front-end
-            self.socketio.emit('audio-stream', {
-                'audioFrame': base64_audio
-            })
-        except Exception as e:
-            print(f"Error handling audio data: {e}")
-
-    
-
-    def send_audio_stream(self):
-        self.P=pyaudio.PyAudio()
-        audio_stream = self.P.open(format=pyaudio.paInt16,channels=1,rate=44100,input=True,frames_per_buffer=2048)
-        # output_stream = self.P.open(format=pyaudio.paInt16,channels=1, rate=44100,output=True,frames_per_buffer=2048)
-        addr = (config.SERVER_IP, self.conference_audio_port)
-
-        while self.audio_running:
-            audio_data = audio_stream.read(2048)      # 读出声卡缓冲区的音频数据
-            print(len(audio_data))
-            # output_stream.write(audio_data)  # Write audio to speakers
-            # audio_data = b"AUDIO" + audio_data
-            self.Socket.sendto(audio_data, addr)
-
-        audio_stream.stop_stream()
-        audio_stream.close()
-        # 终止PyAudio对象，释放占用的系统资源
-        self.P.terminate()
-
 
    
             
@@ -464,6 +554,7 @@ class ConferenceClient:
         self.is_working = False
         self.video_running = False
         self.audio_running = False
+        self.screen_running = False
         for thread in self.threads.values():
             thread.join(timeout=1)
         if self.P:
