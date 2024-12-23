@@ -258,9 +258,7 @@ class ConferenceClient:
                 self.audio_running = True
                 self.audio_queue=[]
                 self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
-                self.audio_thread_receive = threading.Thread(target=self.process_audio_stream, daemon=True)
                 self.audio_thread.start()
-                self.audio_thread_receive.start()
                 return jsonify({
                     "status": "success",
                     "message": f"audio stop"
@@ -333,18 +331,18 @@ class ConferenceClient:
         def disconnect(reason=None):
             print(f"Disconnected from server. Reason: {reason}")
 
-        @self.sio.on('video_frame')
-        def handle_video_stream(data):
-            """Handle incoming video stream."""
-            pass
+        # @self.sio.on('video_frame')
+        # def handle_video_stream(data):
+        #     """Handle incoming video stream."""
+        #     pass
             
 
         @self.sio.on('audio_stream')
         def handle_audio_stream(data):
             """Handle incoming audio stream.""" 
             audio_data = base64.b64decode(data)
-            self.audio_queue.append(audio_data)
-            # self.audio_stream_write.write(audio_data)
+            # self.audio_queue.append(audio_data)
+            self.audio_stream_write.write(audio_data)
 
 
     
@@ -457,7 +455,7 @@ class ConferenceClient:
                     continue
             
             # Send video frame via Socket.IO
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
 
         self.cap.release()
         cv2.destroyAllWindows()

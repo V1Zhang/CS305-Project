@@ -96,7 +96,7 @@
       }
     },
     created() {
-      this.socket = io('http://127.0.0.1:7000');
+      this.socket = io('http://10.32.98.215:7000');
 
       this.socket.on('connect', async () => {
       console.log('Connected to server');
