@@ -35,7 +35,9 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins="http://localhost:5173")
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins="http://localhost:5173",
+                                   ping_interval=10, ping_timeout=20 ,
+                                   max_http_buffer_size=10000000)
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
@@ -224,9 +226,28 @@ class MainServer:
 
         @self.sio.event
         def connect(sid, environ):
-            print(f"Client {sid} connected.")
-            self.clients.append(sid)
-            self.sio.emit('client_info', self.clients)
+            # 从请求头中提取查询字符串
+            query_string = environ.get("QUERY_STRING", "")
+            params = dict(item.split("=") for item in query_string.split("&") if "=" in item)
+            room = params.get("room")  # 获取房间号参数
+            if room:
+                self.sio.enter_room(sid, room)  # 将客户端加入指定房间
+                print(f"Client {sid} connected and joined room {room}")
+                # self.sio.emit("room_joined", {"message": f"Joined room {room}"}, room=sid)
+            else:
+                print(f"Client {sid} connected without specifying a room")
+                # self.sio.emit("error", {"message": "Room not specified"}, room=sid)
+        @self.sio.event
+        def join_room(sid, data):
+            room = data.get('room')
+            if room:
+                self.sio.enter_room(sid, room)
+                print(f"Client {sid} joined room {room}")
+                # self.sio.emit('room_joined', {'message': f'Joined room {room}'}, room=sid)
+            else:
+                print('error')
+                # self.sio.emit('error', {'message': 'Room not specified'}, room=sid)
+
 
         @self.sio.event
         def disconnect(sid):
@@ -279,30 +300,37 @@ class MainServer:
             """
             Handle incoming video frames and broadcast to all other clients.
             """
+            room = data.get("room")
             frame_with_sender = {
                 'frame': data['frame'],
                 'sender_id': sid  # Use the Socket.IO sid as the sender identifier
             }
-            self.sio.emit('video_frame', frame_with_sender)
+            self.sio.emit('video_frame', frame_with_sender,room=room)
             
         @self.sio.on('screen_frame')
         def handle_screen_share(sid, data):
             """
             Handle incoming screen share frames and broadcast to all other clients.
             """
+            room = data.get("room")
             frame_with_sender = {
                 'frame': data['frame'],
                 'sender_id': sid  # Use the Socket.IO sid as the sender identifier
             }
-            print(data['frame'])
-            self.sio.emit('screen_frame', frame_with_sender)
+            self.sio.emit('screen_frame', frame_with_sender,room=room)
 
 
         @self.sio.on('audio_stream')
         def handle_audio_stream(sid,data):
             # audio_data = base64.b64decode(data)
-            self.sio.emit('audio_stream', data)
+            room = data.get("room")
+            data = data.get("data")
+            self.sio.emit('audio_stream', data,room=room)
             
+        @self.sio.on('heartbeat')  # 自定义心跳事件
+        def heartbeat(sid, data):
+            print(f'Heartbeat from {sid}: {data}')
+            self.sio.emit('heartbeat_response', {'status': 'ok'}, to=sid)
 
 
 if __name__ == '__main__':
