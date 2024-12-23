@@ -14,6 +14,9 @@ from Protocol import TextMessageProtocol, RTPProtocol
 import socketio
 import base64
 
+# Configure mode for the server: CS/P2P
+MODE = "CS"
+
 class MainServer:
     def __init__(self, server_ip, main_port):
         # async server
@@ -37,7 +40,8 @@ class MainServer:
         
         self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://127.0.0.1:7000"],
                                    ping_interval=10, ping_timeout=20 ,
-                                   max_http_buffer_size=10000000)
+                                   max_http_buffer_size=10000000
+                                   )
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()

@@ -340,9 +340,11 @@ class ConferenceClient:
         @self.sio.on('audio_stream')
         def handle_audio_stream(data):
             """Handle incoming audio stream.""" 
-            print('received audio stream')
-            audio_data = base64.b64decode(data)
-            self.audio_stream_write.write(audio_data)
+            try:
+                audio_data = base64.b64decode(data)
+                self.audio_stream_write.write(audio_data)
+            except Exception as e:
+                print(f"Error handling audio stream: {e}")
                 
             
 
@@ -367,9 +369,9 @@ class ConferenceClient:
                     data = message.encode()
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
-                    # IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-                    # print(IP)
-                    # self.sio.connect(IP)
+                    IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+                    print(IP)
+                    self.sio.connect(IP)
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -396,8 +398,9 @@ class ConferenceClient:
             self.conference_id=conference_id
             IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
             # 加入对应房间
-            room = str(self.conference_id)  # 动态指定房间号
-            self.sio.connect(f"{IP}?room={room}")
+            # IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+            print(IP)
+            self.sio.connect(IP)
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
