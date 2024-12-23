@@ -105,7 +105,7 @@
             // 调用 Flask API 获取房间号
             const response = await axios.get('http://127.0.0.1:7777/get_room');
             const roomId = response.data.room_id; // 提取房间号
-
+            this.conferenceId = roomId;
             // 使用房间号加入房间
             this.socket.emit('join_room', { room: roomId });
             console.log(`Joined room: ${roomId}`);
