@@ -68,6 +68,8 @@ class ConferenceClient:
         self.P = None
         self.audio_thread = None
         self.audio_running = False
+        self.audio_thread_receive=None
+        self.audio_queue = None
 
         
         # screen share
@@ -205,7 +207,7 @@ class ConferenceClient:
                 try:
                     data = f"TEXT {message}".encode()
                     print(data)
-                    self.Socket.sendto(data, (config.SERVER_IP,config.MAIN_SERVER_PORT ))
+                    self.Socket.sendto(data, (config.SERVER_IP_UDP,config.MAIN_SERVER_PORT_UDP))
                     return jsonify({
                     "status": "success",
                     "message": f"Send TEXT {data}"
@@ -249,8 +251,11 @@ class ConferenceClient:
             action = request.get_json().get('action')
             if self.audio_running is None or self.audio_running==False:
                 self.audio_running = True
+                self.audio_queue=[]
                 self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
+                self.audio_thread_receive = threading.Thread(target=self.process_audio_stream, daemon=True)
                 self.audio_thread.start()
+                self.audio_thread_receive.start()
                 return jsonify({
                     "status": "success",
                     "message": f"audio stop"
@@ -283,6 +288,11 @@ class ConferenceClient:
                     "status": "success",
                     "message": f"screen share stop"
                     }), 200
+            
+        @self.app.route('/get_room', methods=['GET'])
+        def get_room():
+            room_id = self.conference_id # 示例静态房间号
+            return jsonify({"room_id": room_id})
       
                 
             
@@ -293,18 +303,27 @@ class ConferenceClient:
         def handle_connect():
             print('Client connected with SID:', request.sid)  # 打印连接用户的 SID
 
+        
+
     def register_socketio_events(self):
+
 
         @self.sio.event
         def connect():
             print("Connected to server")
-        
+            print(self.sio.sid)
+            self.sio.emit('join_room', { 'room': self.conference_id })
+            threading.Thread(target=send_heartbeat, daemon=True).start()  # 启动心跳线程
+
+        def send_heartbeat():
+            while self.sio.connected:
+                self.sio.emit('heartbeat', {'message': 'ping'})
+                time.sleep(10)  # 每 10 秒发送一次心跳
+
         @self.sio.on('client_info')
         def handle_client_info(data):
             pass
 
-           
-        
         @self.sio.event
         def disconnect(reason=None):
             print(f"Disconnected from server. Reason: {reason}")
@@ -317,11 +336,11 @@ class ConferenceClient:
 
         @self.sio.on('audio_stream')
         def handle_audio_stream(data):
-            """Handle incoming audio stream."""     
+            """Handle incoming audio stream.""" 
             audio_data = base64.b64decode(data)
             self.audio_stream_write.write(audio_data)
                 
-    
+            
 
 
 
@@ -345,8 +364,11 @@ class ConferenceClient:
                     self.Socket.sendto(data, (config.SERVER_IP, config.MAIN_SERVER_PORT))
                     text_output = f"Sent: {message}\n"
                     IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-                    print(IP)
+                    print(IP) 
                     self.sio.connect(IP)
+                    # 加入对应房间
+                    # room = str(self.conference_id)  # 动态指定房间号
+                    # self.sio.connect(f"{IP}?room={room}")
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -371,6 +393,10 @@ class ConferenceClient:
             self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
             text_output = f"Sent: {message}\n"
             self.conference_id=conference_id
+            IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
+            # 加入对应房间
+            room = str(self.conference_id)  # 动态指定房间号
+            self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
@@ -415,9 +441,13 @@ class ConferenceClient:
             img = cv2.flip(img, 1)
             _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
             video_data = base64.b64encode(buffer).decode('utf-8')
-
+            
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
+            
             # Send video frame via Socket.IO
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid})
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
 
         self.cap.release()
         cv2.destroyAllWindows()
@@ -468,12 +498,14 @@ class ConferenceClient:
                             input=True,              # 输入模式
                             frames_per_buffer=4096)  # 缓冲区大小
         while self.audio_running:
-            print('audio_runnning')
             # 从麦克风读取音频数据
             audio_data = self.audio_stream.read(2048)
             encoded_audio = base64.b64encode(audio_data).decode('utf-8')
             # 发送音频数据到服务器
-            self.sio.emit('audio_stream', encoded_audio)
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
+            self.sio.emit('audio_stream', {'data':encoded_audio,"room": str(self.conference_id)})
 
         self.audio_stream.stop_stream()
         self.audio_stream.close()
@@ -496,7 +528,7 @@ class ConferenceClient:
             # 压缩图像并编码为 base64
             screen_data = base64.b64encode(img_byte_arr).decode('utf-8')
             # 使用 socket.io 发送屏幕截图
-            self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid})
+            self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
 
             
     def receive_screen_share(self, screen_data, client_address):
@@ -512,10 +544,13 @@ class ConferenceClient:
             frame_data = base64.b64decode(self.screen_data['frame'])
             base64_frame = io.BytesIO(frame_data).getvalue()
 
-            self.socketio.emit('video-stream', {
-                    'clientAddress': self.socketio.sid,
-                    'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
-                })
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+            else:
+                self.socketio.emit('video-stream', {
+                        'clientAddress': self.socketio.sid,
+                        'videoFrame': base64_frame.decode('latin1')  # Send binary data as string
+                    })
 
    
             

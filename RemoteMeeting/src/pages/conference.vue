@@ -95,10 +95,22 @@
     created() {
       this.socket = io('http://10.32.98.215:7000');
 
-      this.socket.on('connect', () => {
-        console.log('Connected to server');
-        console.log('Client SID:', this.socket.id); // 打印客户端的 SID
-      });
+      this.socket.on('connect', async () => {
+      console.log('Connected to server');
+
+        try {
+            // 调用 Flask API 获取房间号
+            const response = await axios.get('http://127.0.0.1:7777/get_room');
+            const roomId = response.data.room_id; // 提取房间号
+            this.conferenceId = roomId;
+            // 使用房间号加入房间
+            this.socket.emit('join_room', { room: roomId });
+            console.log(`Joined room: ${roomId}`);
+        } catch (error) {
+            console.error('Error fetching room ID:', error);
+        }
+    });
+
       this.socket.on('disconnect', () => {
         console.log('Disconnected to server');
       });
