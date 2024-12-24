@@ -376,7 +376,8 @@ class ConferenceClient:
             self.p2pclient.clients_info = data
             if not self.p2pclient.is_running:
                 try:
-                    asyncio.run(self.p2pclient.start())
+                    self.p2pclient.start()
+                    print(threading.active_count())
                 except Exception as e:
                     print(f"Error starting P2P client: {e}")
             
