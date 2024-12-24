@@ -14,16 +14,16 @@ from Protocol import TextMessageProtocol, RTPProtocol
 import socketio
 import base64
 
-# Configure mode for the server: CS/P2P
-MODE = "CS"
+# Configure mode for the server: CS/P2P -- 1/0
+MODE = 0
 
 class MainServer:
     def __init__(self, server_ip, main_port):
         # async server
+        self.room_manager = {} # Record the mode of each room: 0 for P2P, 1 for CS
         self.server_ip = server_ip
         self.server_port = main_port
         self.main_server = None
-
         self.conference_conns = None
         self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceServer
         self.clients = []
@@ -38,31 +38,21 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://127.0.0.1:7000"],
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://127.0.0.1:7000","https://admin.socket.io"],
                                    ping_interval=10, ping_timeout=20 ,
                                    max_http_buffer_size=10000000
                                    )
+        self.sio.instrument(auth={
+            'username':'admin',
+            'password':'123456'
+        })
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
         eventlet.wsgi.server(eventlet.listen(('', 7000)), self.app)
-
-        # self.p = pyaudio.PyAudio()
-        # self.audio_stream = self.p.open(format=pyaudio.paInt16,  # 16-bit audio format
-        #                     channels=1,              # 单声道
-        #                     rate=44100,              # 采样率
-        #                     output=True,             # 输出模式
-        #                     frames_per_buffer=2048)  # 缓冲区大小
-
-         # Register SocketIO event
+    
         
         print('The server is ready to receive')
-        # plt.ion()
-        # self.fig, self.ax = plt.subplots()
-        # while True:
-        #     connectionSocket, clientAddress = self.serverSocket.accept()
-        #     client_thread = threading.Thread(target=handle_client, args=(connectionSocket, clientAddress))
-        #     client_thread.start()  # 启动线程
 
 
     def handle_create_conference(self,conference_id,conference_host_address):
@@ -230,28 +220,39 @@ class MainServer:
 
         @self.sio.event
         def connect(sid, environ):
-            # 从请求头中提取查询字符串
-            query_string = environ.get("QUERY_STRING", "")
-            params = dict(item.split("=") for item in query_string.split("&") if "=" in item)
-            room = params.get("room")  # 获取房间号参数
-            if room:
-                self.sio.enter_room(sid, room)  # 将客户端加入指定房间
-                print(f"Client {sid} connected and joined room {room}")
-                # self.sio.emit("room_joined", {"message": f"Joined room {room}"}, room=sid)
-            else:
-                print(f"Client {sid} connected without specifying a room")
-                # self.sio.emit("error", {"message": "Room not specified"}, room=sid)
+            print(environ)
+                
         @self.sio.event
-        def join_room(sid, data):
+        def join_room(sid, data): # the sid is the socket id
             room = data.get('room')
+            udp_socket = data.get('udpSocket')
+            video_socket = data.get('videoSocket')
+            audio_socket = data.get('audioSocket')
+            screen_socket = data.get('screenSocket')
+            self.sio.save_session(sid, {'room': room, 
+                                        'udpSocket': udp_socket, 
+                                        'videoSocket': video_socket, 
+                                        'audioSocket': audio_socket, 
+                                        'screenSocket': screen_socket}
+                                  )
+            
             if room:
                 self.sio.enter_room(sid, room)
                 print(f"Client {sid} joined room {room}")
                 # self.sio.emit('room_joined', {'message': f'Joined room {room}'}, room=sid)
+                room_clients = list(self.sio.manager.get_participants("/", room))
+                print(f"Number of clients in room {room}: {len(room_clients)}")
+                
+                # Change the mode of the room according to the number of clients in the room
+                if len(room_clients) <= 2:
+                    self.room_manager[room] = 0
+                elif len(room_clients) > 2:
+                    self.room_manager[room] = 1
+                    
+                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':len(room_clients)},room=room)
             else:
                 print('error')
                 # self.sio.emit('error', {'message': 'Room not specified'}, room=sid)
-
 
         @self.sio.event
         def disconnect(sid):
@@ -335,6 +336,43 @@ class MainServer:
         def heartbeat(sid, data):
             print(f'Heartbeat from {sid}: {data}')
             self.sio.emit('heartbeat_response', {'status': 'ok'}, to=sid)
+            
+        @self.sio.on('leave_room')
+        def handle_leave_room(sid, data):
+            room = data.get('room')
+            self.sio.leave_room(sid, room)
+            print(f"Client {sid} left room {room}")
+            room_clients = list(self.sio.manager.get_participants("/", room))
+            print(f"Number of clients in room {room}: {len(room_clients)}")
+            # Change the mode of the room according to the number of clients in the room
+            if len(room_clients) <= 2:
+                self.room_manager[room] = 0
+            elif len(room_clients) > 2:
+                self.room_manager[room] = 1
+            
+            self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':len(room_clients)},room=room)
+            
+        @self.sio.on('get_clients')
+        def handle_get_clients(sid, data):
+            room = data.get('room')
+            room_clients = list(self.sio.manager.get_participants("/", room)) # the return value is a list of (socketid,sid)
+            print(room_clients)
+            # Acquire the ports of each client
+            clients_info = []
+            for client_sid,_ in room_clients:
+                # if client_sid != sid:
+                    session_data = self.sio.get_session(client_sid,namespace='/')
+                    client_info = {
+                        'sid': client_sid,
+                        'udp_socket': session_data.get('udpSocket'),
+                        'video_socket': session_data.get('videoSocket'),
+                        'audio_socket': session_data.get('audioSocket'),
+                        'screen_socket': session_data.get('screenSocket')
+                    }
+                    clients_info.append(client_info)
+            
+            self.sio.emit(event='clients_list', data=clients_info, to=sid)
+            print(f"Client {sid} requested clients list in room {room}")
 
 
 if __name__ == '__main__':

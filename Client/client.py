@@ -3,19 +3,13 @@ import socket
 import threading
 import cv2
 from PIL import Image
-from aioquic.asyncio import connect
-from aioquic.asyncio.protocol import QuicConnectionProtocol
-from aioquic.quic.configuration import QuicConfiguration
 import util,config
 import pyaudio
 import numpy as np
 import wave
-# from rtp import RTP,Extension,PayloadType
 import struct
 import queue
 from time import time
-import RtpPacket
-import pydub
 import random
 import base64
 import pyautogui
@@ -23,6 +17,8 @@ from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import socketio as SOCKET
+from P2PClient import P2PClient
+import asyncio
 
 
 
@@ -56,16 +52,9 @@ class ConferenceClient:
         CORS(self.app)
 
         # client和server通信的端口
-        self.sio = SOCKET.Client()
+        self.sio = SOCKET.Client(logger=True, engineio_logger=True)
         self.register_socketio_events()
-        IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-        print(IP)
-        self.sio.connect(IP)
-
-
-
-        
-        
+                
         ## video part
         self.cap = None
         self.video_thread = None
@@ -92,6 +81,10 @@ class ConferenceClient:
                             rate=44100,              # 采样率
                             output=True,             # 输出模式
                             frames_per_buffer=2048)  # 缓冲区大小
+        
+        # Conference mode: CS or P2P: 1 for CS, 0 for P2P
+        self.mode = 0
+        self.p2pclient = P2PClient(audio_stream=self.audio_stream_write)
     
     
 
@@ -183,7 +176,7 @@ class ConferenceClient:
                 }), 500
                 
         @self.app.route('/quit_conference', methods=['POST'])
-        def quit_conference_route():
+        def quit_conference_route(): # TODO: Frontend and Backend are not connected.
             """
             Handle a POST request to quit a conference.
             This will process the quit request and clean up resources on the server.
@@ -211,7 +204,7 @@ class ConferenceClient:
                     "message": "You are not in a conference."
                 }), 500
             message = request.get_json().get('message')
-            if message:
+            if message and self.mode == 1:
                 try:
                     data = f"TEXT {message}".encode()
                     print(data)
@@ -223,8 +216,21 @@ class ConferenceClient:
                 except Exception as e:
                     return jsonify({
                     "status": "error",
-                    "message": f"Error leaving conference: {str(e)}"
+                    "message": f"Error sending text message: {str(e)}"
                     }), 500
+            elif message and self.mode == 0:
+                try:
+                    self.p2pclient.send_text_message(message=message)
+                    return jsonify({
+                    "status": "success",
+                    "message": f"Send TEXT {message}"
+                    }), 200
+                except Exception as e:
+                    return jsonify({
+                    "status": "error",
+                    "message": f"Error sending text message: {str(e)}"
+                    }), 500
+                
         
         
         @self.app.route('/toggle_video_stream', methods=['POST'])       
@@ -318,11 +324,18 @@ class ConferenceClient:
         def connect():
             print("Connected to server")
             print(self.sio.sid)
-            self.sio.emit('join_room', { 'room': self.conference_id })
+            self.sio.emit('join_room', { 'room': self.conference_id,
+                                        'udpSocket':self.p2pclient.udpSocket.getsockname(),
+                                        'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
+                                        'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
+                                        'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
+                                        }
+                          ) 
             threading.Thread(target=send_heartbeat, daemon=True).start()  # 启动心跳线程
 
         def send_heartbeat():
             while self.sio.connected:
+                print(self.mode)
                 self.sio.emit('heartbeat', {'message': 'ping'})
                 time.sleep(10)  # 每 10 秒发送一次心跳
 
@@ -334,18 +347,41 @@ class ConferenceClient:
         def disconnect(reason=None):
             print(f"Disconnected from server. Reason: {reason}")
 
-        # @self.sio.on('video_frame')
-        # def handle_video_stream(data):
-        #     """Handle incoming video stream."""
-        #     pass
-            
-
         @self.sio.on('audio_stream')
         def handle_audio_stream(data):
             """Handle incoming audio stream.""" 
             audio_data = base64.b64decode(data)
             # self.audio_queue.append(audio_data)
             self.audio_stream_write.write(audio_data)
+            
+        @self.sio.on('mode_change')
+        def handle_mode_change(data):
+            """Handle mode change request."""
+            self.mode = data.get('mode')
+            num_clients = data.get('num_clients')
+            print(f"Mode changed to {self.mode} and there are {num_clients} clients in the room.")
+            
+            if self.mode == 1 and self.p2pclient.is_running:
+                  self.p2pclient.close()
+            
+            # in p2p mode, acquire the client list
+            if num_clients > 0 and num_clients <= 2 : # TODO: changed to 1
+                self.sio.emit('get_clients', {'room': self.conference_id})
+        
+        @self.sio.on('clients_list')
+        def handle_clients_list(data):
+            """
+            Handle client list update. Start P2P communication with clients.
+            """
+            self.p2pclient.clients_info = data
+            if not self.p2pclient.is_running:
+                try:
+                    asyncio.run(self.p2pclient.start())
+                except Exception as e:
+                    print(f"Error starting P2P client: {e}")
+            
+            
+            
 
 
     
@@ -417,8 +453,9 @@ class ConferenceClient:
             })
 
     def quit_conference(self):
+        
         if not self.conference_id:
-            print("Warning", "You are not in a conference.")
+            print("Warning", "You are not in a conference.") 
             return
         message = f"QUIT {self.conference_id}"
         try:
@@ -427,10 +464,12 @@ class ConferenceClient:
             text_output = f"Sent: {message}\n"
         except Exception as e:
             print("Error", f"Error sending message: {e}")
+        self.sio.emit('leave_room', { 'room': self.conference_id })
         self.conference_id = None
         self.conference_port = None
         self.join_success.clear()
         text_output = text_output + "Left the conference.\n"
+     
         return jsonify({
                 "status": "success",
                 "text_output": text_output,
@@ -449,14 +488,18 @@ class ConferenceClient:
             # img = cv2.imread(self.image_path)
             img = cv2.flip(img, 1)
             _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            video_data = base64.b64encode(buffer).decode('utf-8')
             
-            if not self.sio.connected:
-                    print("Waiting for reconnection...")
-                    continue
+            if self.mode == 1:
+                video_data = base64.b64encode(buffer).decode('utf-8')
+                if not self.sio.connected:
+                        print("Waiting for reconnection...")
+                        continue
             
-            # Send video frame via Socket.IO
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+                # Send video frame via Socket.IO
+                self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+            elif self.mode == 0:
+                video_data = buffer.tobytes()
+                self.p2pclient.forward_rtp_data(video_data,'video')
 
         self.cap.release()
         cv2.destroyAllWindows()
@@ -509,12 +552,16 @@ class ConferenceClient:
         while self.audio_running:
             # 从麦克风读取音频数据
             audio_data = self.audio_stream.read(2048)
-            encoded_audio = base64.b64encode(audio_data).decode('utf-8')
-            # 发送音频数据到服务器
-            if not self.sio.connected:
+            
+            if self.mode == 1:
+                encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+                if not self.sio.connected:
                     print("Waiting for reconnection...")
                     continue
-            self.sio.emit('audio_stream', {'data':encoded_audio,"room": str(self.conference_id)})
+                self.sio.emit('audio_stream', {'data':encoded_audio,"room": str(self.conference_id)})
+            elif self.mode == 0:
+                encoded_audio = audio_data
+                self.p2pclient.forward_rtp_data(encoded_audio,'audio')
 
         self.audio_stream.stop_stream()
         self.audio_stream.close()
@@ -534,10 +581,16 @@ class ConferenceClient:
             screenshot.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
 
-            # 压缩图像并编码为 base64
-            screen_data = base64.b64encode(img_byte_arr).decode('utf-8')
             # 使用 socket.io 发送屏幕截图
-            self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
+            if self.mode == 1:
+                screen_data = base64.b64encode(img_byte_arr).decode('utf-8')
+                if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
+                self.sio.emit('screen_frame', {'frame': screen_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
+            elif self.mode == 0:
+                screen_data = img_byte_arr
+                self.p2pclient.forward_rtp_data(screen_data,'screen')
 
             
     def receive_screen_share(self, screen_data, client_address):
