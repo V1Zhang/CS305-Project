@@ -229,30 +229,37 @@ class MainServer:
             video_socket = data.get('videoSocket')
             audio_socket = data.get('audioSocket')
             screen_socket = data.get('screenSocket')
-            self.sio.save_session(sid, {'room': room, 
-                                        'udpSocket': udp_socket, 
-                                        'videoSocket': video_socket, 
-                                        'audioSocket': audio_socket, 
-                                        'screenSocket': screen_socket}
-                                  )
+            if udp_socket:
+                print(f"Client {sid} joined room {room} with UDP socket {udp_socket}")
+                self.sio.save_session(sid, {'room': room, 
+                                            'udpSocket': udp_socket, 
+                                            'videoSocket': video_socket, 
+                                            'audioSocket': audio_socket, 
+                                            'screenSocket': screen_socket}
+                                    )
             
             if room:
                 self.sio.enter_room(sid, room)
                 print(f"Client {sid} joined room {room}")
-                # self.sio.emit('room_joined', {'message': f'Joined room {room}'}, room=sid)
+                
+                # Checkt if the client is a valid p2p client
+                
                 room_clients = list(self.sio.manager.get_participants("/", room))
-                print(f"Number of clients in room {room}: {len(room_clients)}")
+                cnt = 0
+                for client_sid, _ in room_clients:
+                    if self.sio.get_session(sid,namespace='/'):
+                        cnt += 1
+                print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if len(room_clients) <= 2:
+                if cnt <= 2:
                     self.room_manager[room] = 0
-                elif len(room_clients) > 2:
+                elif cnt > 2:
                     self.room_manager[room] = 1
                     
-                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':len(room_clients)},room=room)
+                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
             else:
                 print('error')
-                # self.sio.emit('error', {'message': 'Room not specified'}, room=sid)
 
         @self.sio.event
         def disconnect(sid):
@@ -343,14 +350,18 @@ class MainServer:
             self.sio.leave_room(sid, room)
             print(f"Client {sid} left room {room}")
             room_clients = list(self.sio.manager.get_participants("/", room))
-            print(f"Number of clients in room {room}: {len(room_clients)}")
+            cnt = 0
+            for client_sid, _ in room_clients:
+                if self.sio.get_session(sid,namespace='/'):
+                    cnt += 1
+            print(f"Number of clients in room {room}: {cnt}")
             # Change the mode of the room according to the number of clients in the room
-            if len(room_clients) <= 2:
+            if cnt <= 2:
                 self.room_manager[room] = 0
-            elif len(room_clients) > 2:
+            elif cnt > 2:
                 self.room_manager[room] = 1
             
-            self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':len(room_clients)},room=room)
+            self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':cnt},room=room)
             
         @self.sio.on('get_clients')
         def handle_get_clients(sid, data):
@@ -362,14 +373,15 @@ class MainServer:
             for client_sid,_ in room_clients:
                 # if client_sid != sid:
                     session_data = self.sio.get_session(client_sid,namespace='/')
-                    client_info = {
-                        'sid': client_sid,
-                        'udp_socket': session_data.get('udpSocket'),
-                        'video_socket': session_data.get('videoSocket'),
-                        'audio_socket': session_data.get('audioSocket'),
-                        'screen_socket': session_data.get('screenSocket')
-                    }
-                    clients_info.append(client_info)
+                    if session_data:
+                        client_info = {
+                            'sid': client_sid,
+                            'udp_socket': session_data.get('udpSocket'),
+                            'video_socket': session_data.get('videoSocket'),
+                            'audio_socket': session_data.get('audioSocket'),
+                            'screen_socket': session_data.get('screenSocket')
+                        }
+                        clients_info.append(client_info)
             
             self.sio.emit(event='clients_list', data=clients_info, to=sid)
             print(f"Client {sid} requested clients list in room {room}")

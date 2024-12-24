@@ -205,6 +205,7 @@ class P2PClient:
 
     def handle_audio_data(self, data):
         self.audio_buffer.put(data)
+        print(self.audio_buffer.qsize())
 
     def handle_video_frame(self, data):
         frame_data = np.frombuffer(data, np.uint8)
