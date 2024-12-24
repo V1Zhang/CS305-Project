@@ -46,7 +46,7 @@ class ConferenceClient:
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.Socket.bind(('0.0.0.0', 0))
-
+        self.available_conferences = []
 
         # 前后端通信的端口
         async_mode = "eventlet"
@@ -56,7 +56,7 @@ class ConferenceClient:
         CORS(self.app)
 
         # client和server通信的端口
-        self.sio = SOCKET.Client()
+        self.sio = SOCKET.Client(logger=False, engineio_logger=False)
         self.register_socketio_events()
         
         ## video part
@@ -64,6 +64,8 @@ class ConferenceClient:
         self.video_thread = None
         self.video_running = False
         self.video_queue = queue.Queue()
+        self.image_path = "Client/off.jpg"
+        
         # audio part
         self.P = None
         self.audio_thread = None
@@ -157,6 +159,7 @@ class ConferenceClient:
                     "status": "error",
                     "message": f"Error creating conference: {str(e)}"
                 }), 500
+                
         @self.app.route('/join_conference', methods=['POST'])
         def join_conference_route():
             try:
@@ -174,6 +177,11 @@ class ConferenceClient:
                     "message": f"Error joining conference: {str(e)}"
                 }), 500
                 
+        @self.app.route('/available_conferences', methods=['GET'])
+        def available_conferences_route():
+            conferences = self.available_conferences # 示例静态房间号
+            return jsonify({"status": "success", "conferences": conferences})
+                
         @self.app.route('/quit_conference', methods=['POST'])
         def quit_conference_route():
             """
@@ -181,7 +189,11 @@ class ConferenceClient:
             This will process the quit request and clean up resources on the server.
             """
             try:
-                self.quit_conference()
+                isHost = request.get_json().get('isHost')
+                if isHost:
+                    self.quit_conference()
+                else:
+                    self.leave_conference()
                 return jsonify({
                     "status": "success",
                     "message": f"Left Conference {self.conference_id} successfully."
@@ -196,7 +208,6 @@ class ConferenceClient:
         
         @self.app.route('/send_message', methods=['POST'])       
         def send_text_message():
-            print('yes')
             if not self.conference_id:
                 return jsonify({
                     "status": "error",
@@ -236,6 +247,8 @@ class ConferenceClient:
                     }), 200
             else:
                 self.video_running = False
+                self.video_thread = threading.Thread(target=self.send_static_img, daemon=True)
+                self.video_thread.start()
                 return jsonify({
                     "status": "success",
                     "message": f"video start"
@@ -253,9 +266,8 @@ class ConferenceClient:
                 self.audio_running = True
                 self.audio_queue=[]
                 self.audio_thread = threading.Thread(target=self.send_audio_stream, daemon=True)
-                self.audio_thread_receive = threading.Thread(target=self.process_audio_stream, daemon=True)
+                
                 self.audio_thread.start()
-                self.audio_thread_receive.start()
                 return jsonify({
                     "status": "success",
                     "message": f"audio stop"
@@ -302,8 +314,11 @@ class ConferenceClient:
         @self.socketio.on('connect')
         def handle_connect():
             print('Client connected with SID:', request.sid)  # 打印连接用户的 SID
-
         
+        
+        
+            
+           
 
     def register_socketio_events(self):
 
@@ -323,15 +338,16 @@ class ConferenceClient:
         @self.sio.on('client_info')
         def handle_client_info(data):
             pass
+        
+        @self.socketio.on('available_conferences')
+        def handle_available_conferences(data):
+            self.available_conferences = data['conferences']
+    
+        
 
         @self.sio.event
         def disconnect(reason=None):
             print(f"Disconnected from server. Reason: {reason}")
-
-        @self.sio.on('video_frame')
-        def handle_video_stream(data):
-            """Handle incoming video stream."""
-            pass
             
 
         @self.sio.on('audio_stream')
@@ -341,13 +357,6 @@ class ConferenceClient:
             self.audio_stream_write.write(audio_data)
                 
             
-
-
-
-
-       
-        
-
     def create_conference(self):
         if not self.conference_id:
             conference_id = ''.join(random.choices('0123456789', k=6))
@@ -437,8 +446,8 @@ class ConferenceClient:
 
         while self.video_running:
             _, img = self.cap.read()
-            # img = cv2.imread(self.image_path)
             img = cv2.flip(img, 1)
+
             _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
             video_data = base64.b64encode(buffer).decode('utf-8')
             
@@ -447,8 +456,23 @@ class ConferenceClient:
                     continue
             
             # Send video frame via Socket.IO
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
-
+            # self.sio.emit('video_frame', {'frame': video_data, 'sender_id': self.sio.sid,"room": str(self.conference_id)})
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+        self.cap.release()
+        cv2.destroyAllWindows()
+        
+    def send_static_img(self):
+        while not self.video_running:
+            img = cv2.imread(self.image_path)
+            img = cv2.resize(img, (680, 480))
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
+            
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
+            
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
         self.cap.release()
         cv2.destroyAllWindows()
 
@@ -556,7 +580,7 @@ class ConferenceClient:
             
             
     def start(self):
-        self.socketio.run(self.app, host="0.0.0.0", port=7777, debug=True)
+        self.socketio.run(self.app, host="0.0.0.0", port=7777, debug=False)
         # self.app.run(host="0.0.0.0", port=7777, debug=True)
     
     def on_closing(self):

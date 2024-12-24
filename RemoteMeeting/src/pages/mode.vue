@@ -2,6 +2,20 @@
   <div>
     <v-header/>
     <div id="page_container" style="text-align: center;">
+
+      <!-- 显示可加入的会议 -->
+      <div v-if="availableConferences.length > 0" class="conference-list">
+        <h2>Available Conferences</h2>
+        <ul>
+          <li v-for="conference in availableConferences" :key="conference">
+            {{ conference }}
+          </li>
+        </ul>
+      </div>
+      <div v-else>
+        <p>No available conferences at the moment.</p>
+      </div>
+
       <div class="action-list">
         <div v-for="action in actions" :key="action.id" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="action-item"
@@ -16,6 +30,7 @@
         </div>
       </div>
     </div>
+    
     <div v-if="showJoinModal" class="modal">
       <div class="modal-content">
         <h2>Join Meeting</h2>
@@ -53,12 +68,14 @@ export default {
         }
       ],
       showJoinModal: false, // Controls the modal visibility
-      conferenceId: "" // Holds the conference ID input by the user
+      conferenceId: "", // Holds the conference ID input by the user
+      availableConferences: [], // List of available conferences
     }
   },
   created() {
     // this.updateSentence();
     setInterval(this.updateSentence, 5000);
+    this.fetchAvailableConferences(); // Fetch available conferences on load
   },
   methods: {
     selectAction(action) {
@@ -93,6 +110,20 @@ export default {
 
       } else if (action.id === 2) {  //  "Join Meeting"
       this.showJoinModal = true; // Show the modal to input conference ID
+      }
+    },
+
+    async fetchAvailableConferences() {
+      try {
+        const response = await axios.get('http://127.0.0.1:7777/available_conferences');
+        if (response.status === 200 && response.data.status === 'success') {
+          this.availableConferences = response.data.conferences || [];
+          console.log('Available conferences:', this.availableConferences);
+        } else {
+          console.error('Failed to fetch conferences', response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching conferences:', error);
       }
     },
 
@@ -297,5 +328,47 @@ input {
   margin: 10px 0;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+
+
+.conference-list {
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  margin: 20px auto;
+}
+
+.conference-list h2 {
+  text-align: center;
+  color: #333;
+}
+
+.conference-list ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.conference-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  margin: 8px 0;
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.conference-item:hover {
+  background-color: #f1f1f1;
+}
+
+.no-conference-message {
+  text-align: center;
+  color: #888;
+  font-size: 18px;
 }
 </style>

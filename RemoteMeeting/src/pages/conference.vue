@@ -64,7 +64,6 @@
 </template>
   
   <script>
-  import img from '../assets/img/off.jpg'
   import vHeader from '../components/header.vue';
   import axios from 'axios';
   import io from 'socket.io-client';
@@ -76,9 +75,9 @@
     data() {
       return {        
         socket: null,
-        fallbackUrl: img,
+
         conferenceId: "",  
-        isHost: true,
+        isHost: false,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
         screenShareButtonText: "Start Screen Share",
@@ -88,12 +87,11 @@
         messageInput: "",      // 用户输入的消息
         videoStreams: [],
         screenShareStream: null, // 存储屏幕共享流
-        videoStreamStatus: false,
-        clientsInConference: [],
+        videoStreamStatus: true,
       }
     },
     created() {
-      this.socket = io('http://10.32.98.215:7000');
+      this.socket = io('http://127.0.0.1:7000');
 
       this.socket.on('connect', async () => {
       console.log('Connected to server');
@@ -101,14 +99,19 @@
         try {
             // 调用 Flask API 获取房间号
             const response = await axios.get('http://127.0.0.1:7777/get_room');
-            const roomId = response.data.room_id; // 提取房间号
+            const roomId = response.data.room_id;; // 提取房间号
             this.conferenceId = roomId;
             // 使用房间号加入房间
-            this.socket.emit('join_room', { room: roomId });
+            this.socket.emit('join_room', { room: roomId });           
+            
             console.log(`Joined room: ${roomId}`);
-        } catch (error) {
-            console.error('Error fetching room ID:', error);
-        }
+          } catch (error) {
+              console.error('Error fetching room ID:', error);
+          }
+
+
+
+        this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
     });
 
       this.socket.on('disconnect', () => {
@@ -135,6 +138,11 @@
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
     },
+    mounted() {
+    // 在页面加载后自动调用 toggleVideoStream
+    this.toggleVideoStream();
+    },
+
     beforeDestroy() {
       // 断开 WebSocket 连接
       if (this.socket) {
@@ -158,18 +166,21 @@
           const outputElement = this.$refs.textOutput; // 确保绑定了 ref="textOutput"
           if (outputElement) {
             outputElement.scrollTop = outputElement.scrollHeight;
-          }
-  });
+          }});
         },
 
         handleIncomingVideoStream(data) {
           const { frame: videoFrame, sender_id: clientAddress } = data; // 确保字段名称与后端一致
-        
+          // console.log('Received video frame data:', data);
+          // console.log("sender_id (clientAddress):", clientAddress);
+
+
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
-          );
 
+          );
+          
           if (existingStream) {
             // 如果已存在该客户端的视频流，更新视频帧
             existingStream.videoFrame = videoFrame;
@@ -180,7 +191,6 @@
               videoFrame
             });
           }
-      
         },
 
         handleIncomingScreenShare(data) {
@@ -196,7 +206,7 @@
         async quitConference() {
             try {
                 const response = await axios.post('http://127.0.0.1:7777/quit_conference', {
-                userId: "user123", // 示例数据
+                  isHost: this.isHost, // 示例数据
                 });
 
                 if (response.status === 200) {
@@ -215,7 +225,7 @@
         async toggleVideoStream() {
             try {
                 const response = await axios.post('http://127.0.0.1:7777/toggle_video_stream', {
-                action: this.videoStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
+                  action: this.videoStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
                 });
 
                 if (response.data.status === 'success') {
@@ -225,7 +235,7 @@
                       // 如果视频流启动，设定视频流的地址
                       this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
                   }else {
-                    this.videoStreamUrl = this.fallbackUrl;
+                    // console.error('Error toggling video stream:', response.data.message);
                   }
                 } else {
                 console.error('Error toggling video stream:', response.data.message);
