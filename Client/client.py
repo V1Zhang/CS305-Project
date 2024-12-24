@@ -46,7 +46,6 @@ class ConferenceClient:
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # self.Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.Socket.bind(('0.0.0.0', 0))
-        self.available_conferences = []
 
         # 前后端通信的端口
         async_mode = "eventlet"
@@ -177,10 +176,6 @@ class ConferenceClient:
                     "message": f"Error joining conference: {str(e)}"
                 }), 500
                 
-        @self.app.route('/available_conferences', methods=['GET'])
-        def available_conferences_route():
-            conferences = self.available_conferences # 示例静态房间号
-            return jsonify({"status": "success", "conferences": conferences})
                 
         @self.app.route('/quit_conference', methods=['POST'])
         def quit_conference_route():
@@ -218,7 +213,8 @@ class ConferenceClient:
                 try:
                     data = f"TEXT {message}".encode()
                     print(data)
-                    self.Socket.sendto(data, (config.SERVER_IP_UDP,config.MAIN_SERVER_PORT_UDP))
+                    self.sio.emit('text_message', {'message': data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+                    # self.Socket.sendto(data, (config.SERVER_IP_UDP,config.MAIN_SERVER_PORT_UDP))
                     return jsonify({
                     "status": "success",
                     "message": f"Send TEXT {data}"

@@ -87,12 +87,12 @@
         messageInput: "",      // 用户输入的消息
         videoStreams: [],
         screenShareStream: null, // 存储屏幕共享流
-        videoStreamStatus: true,
+        videoStreamStatus: false,
       }
     },
     created() {
-      this.socket = io('http://127.0.0.1:7000');
-
+      this.socket = io('http://10.32.25.161:7000');
+      
       this.socket.on('connect', async () => {
       console.log('Connected to server');
 
@@ -109,10 +109,8 @@
               console.error('Error fetching room ID:', error);
           }
 
-
-
         this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
-    });
+      });
 
       this.socket.on('disconnect', () => {
         console.log('Disconnected to server');
@@ -178,7 +176,6 @@
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
-
           );
           
           if (existingStream) {

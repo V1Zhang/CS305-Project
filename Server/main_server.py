@@ -13,6 +13,10 @@ from conf_server import ConferenceServer
 from Protocol import TextMessageProtocol, RTPProtocol
 import socketio
 import base64
+from werkzeug.serving import WSGIRequestHandler
+import logging
+import sys
+import os
 
 class MainServer:
     def __init__(self, server_ip, main_port):
@@ -22,7 +26,7 @@ class MainServer:
         self.main_server = None
 
         self.conference_conns = None
-        self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceServer
+        self.conference_servers = {}
         self.clients = []
         self.threads = {}
         # build socket
@@ -37,12 +41,28 @@ class MainServer:
         
         self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins="http://localhost:5173",
                                    ping_interval=10, ping_timeout=20 ,
-                                   max_http_buffer_size=10000000)
+                                   max_http_buffer_size=10000000,
+                                   logger=False,  # 禁用 Flask-SocketIO 的日志输出
+                                   engineio_logger=False  # 禁用 Engine.IO 的日志输出
+                                   )
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
         eventlet.wsgi.server(eventlet.listen(('', 7000)), self.app)
+        
+       # 禁用 werkzeug 的 HTTP 请求日志
+        WSGIRequestHandler.log_request = lambda *args, **kwargs: None
 
+        # 禁用 logging
+        logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
+        logging.getLogger('werkzeug').handlers = []
+
+        # 重定向标准输出和错误输出
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        
+        
+        
         # self.p = pyaudio.PyAudio()
         # self.audio_stream = self.p.open(format=pyaudio.paInt16,  # 16-bit audio format
         #                     channels=1,              # 单声道
@@ -84,12 +104,7 @@ class MainServer:
             asyncio.run(conference_server.start())
         except Exception as e:
             print(f"运行会议 {conference_server.conference_id} 时出错: {e}")
-        
-        
-
-
-        
-
+    
     def handle_join_conference(self, conference_id):
         """
         join conference: search corresponding conference_info and ConferenceServer, and reply necessary info to client
@@ -103,26 +118,86 @@ class MainServer:
             return True
 
 
-    def handle_quit_conference(self,conference_id,client_address):
+    def handle_quit_conference(self,conference_id):
         """
         quit conference (in-meeting request & or no need to request)
         """
-        self.conference_servers[conference_id].clients_info.remove(client_address)
-        # 如果已经没有人在会议中，则关闭会议
-        if len(self.conference_servers[conference_id].clients_info) == 0:
-            self.handle_cancel_conference(conference_id)
-        
+        try:
+            conference = self.conference_servers.get(conference_id)
+            if not conference:
+                print(f"Conference ID {conference_id} not found.")
+                return
 
-    def handle_cancel_conference(self,conference_id):
+            # 通知所有与会者会议结束
+            for client in conference.clients_info:
+                try:
+                    message = f"Conference {conference_id} has ended."
+                    data = message.encode()
+                    self.udpSocket.sendto(data, client)
+                    print(f"Notified {client} about conference ending.")
+                except Exception as e:
+                    print(f"Error notifying client {client}: {e}")
+
+            # 关闭所有与会者的线程并释放资源
+            for client in conference.clients_info:
+                self.release_client_resources(client)
+
+            # 删除会议对象
+            del self.conference_servers[conference_id]
+            print(f"Conference {conference_id} has been successfully ended and resources released.")
+
+        except Exception as e:
+            print(f"Error ending conference {conference_id}: {e}")
+        
+    def handle_leave_conference(self, conference_id, client_address):
         """
-        cancel conference (in-meeting request, a ConferenceServer should be closed by the MainServer)
+        Handle a single client leaving the conference. If the conference becomes empty, end it.
         """
-        self.conference_servers[conference_id].broadcast_info("The conference is closed.",BROADCAST_CANCEL_CONFERENCE)
-        # self.threads[conference_id].join()
-        # TODO: 关闭线程
-        del self.conference_servers[conference_id]
-        del self.threads[conference_id]
-        # self.threads[conference_id].join()
+        try:
+            conference = self.conference_servers.get(conference_id)
+            if not conference:
+                print(f"Conference ID {conference_id} not found.")
+                return
+
+            # 移除客户端
+            if client_address in conference.clients_info:
+                conference.clients_info.remove(client_address)
+                print(f"Client {client_address} has left conference {conference_id}.")
+            else:
+                print(f"Client {client_address} not found in conference {conference_id}.")
+
+            # 通知其他与会者（可选）
+            for other_client in conference.clients_info:
+                try:
+                    message = f"Client {client_address} has left the conference."
+                    data = message.encode()
+                    self.Socket.sendto(data, other_client)
+                    print(f"Notified {other_client} about {client_address} leaving.")
+                except Exception as e:
+                    print(f"Error notifying client {other_client}: {e}")
+
+            # 检查会议是否为空
+            if len(conference.clients_info) == 0:
+                print(f"No clients remaining in conference {conference_id}. Ending conference.")
+                self.handle_quit_conference(conference_id)
+
+        except Exception as e:
+            print(f"Error handling client {client_address} leaving conference {conference_id}: {e}")
+
+    def release_client_resources(self, client_address):
+        """
+        Release resources associated with a client.
+        """
+        try:
+            if client_address in self.client_threads:
+                client_thread = self.client_threads.pop(client_address, None)
+                if client_thread and client_thread.is_alive():
+                    client_thread.join(timeout=1)  # 等待线程退出
+                    print(f"Thread for client {client_address} terminated.")
+            else:
+                print(f"No active thread found for client {client_address}.")
+        except Exception as e:
+            print(f"Error releasing resources for client {client_address}: {e}")
 
         
 
@@ -142,7 +217,6 @@ class MainServer:
         print(f"Broadcasting message: {formatted_message}")
         for client in self.clients:
             # if client != sender_address:  # 不发送给消息发送者
-                print(client)
                 try:
                     self.serverSocket.sendto(broadcast_data, client)
                     print("Message sent.")
@@ -164,6 +238,7 @@ class MainServer:
                 header, payload = data[:5].decode(), data[5:]  # 协议头为固定长度5字节
                 # print(header)
                 if client_address not in self.clients:
+                    print(client_address)
                     self.clients.append(client_address)
                 
                 if header == "TEXT ":
@@ -204,8 +279,11 @@ class MainServer:
                 elif header == "QUIT ":
                     message = payload.decode()
                     print(f"Quit conference {message} request received.")
-                    self.handle_quit_conference(conference_id=int(message),client_address=client_address)
-
+                    self.handle_quit_conference(conference_id=int(message))
+                elif header == "LEAVE":
+                    message = payload.decode()
+                    print(f"Leave conference {message} request received.")
+                    self.handle_leave_conference(conference_id=int(message),client_address=client_address)
 
                 # # 按下 'q' 键退出
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -216,7 +294,6 @@ class MainServer:
                 print(f"Error: {e}")
                 break
         
-            
         self.serverSocket.close()
         cv2.destroyAllWindows()
 
@@ -283,16 +360,25 @@ class MainServer:
             print(f"Client {sid} joined conference {conference_id}.")
             await self.sio.emit('joined_conference', {'conference_id': conference_id}, to=sid)
 
+        @self.sio.on('get_available_conferences')
+        def get_available_conferences(sid):
+            try:
+                conferences = [conference_id for conference_id, server in self.conference_servers.items()]
+                self.sio.emit('available_conferences', {"status": "success", "conferences": conferences })
+            except Exception as e:
+                self.sio.emit('available_conferences', {"status": "error", "message": str(e)})
+
+
         @self.sio.on('text_message')
         async def handle_text_message(sid, data):
             message = data.get('message')
-            conference_id = data.get('conference_id')
-            if conference_id not in self.conference_servers:
-                await self.sio.emit('error', {'message': f'Conference {conference_id} not found.'}, to=sid)
+            room = data.get('room')
+            if room not in self.conference_servers:
+                await self.sio.emit('error', {'message': f'Conference {room} not found.'}, to=sid)
                 return
 
             formatted_message = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {sid}: {message}"
-            await self.sio.emit('text_message', {'message': formatted_message}, room=conference_id)
+            await self.sio.emit('text_message', {'message': formatted_message}, room=room)
             print(f"Broadcasted message: {formatted_message}")
         
         @self.sio.on('video_frame')
@@ -303,8 +389,9 @@ class MainServer:
             room = data.get("room")
             frame_with_sender = {
                 'frame': data['frame'],
-                'sender_id': sid  # Use the Socket.IO sid as the sender identifier
+                'sender_id': data['sender_id']  # Use the Socket.IO sid as the sender identifier
             }
+            print(data['sender_id'])
             self.sio.emit('video_frame', frame_with_sender,room=room)
             
         @self.sio.on('screen_frame')

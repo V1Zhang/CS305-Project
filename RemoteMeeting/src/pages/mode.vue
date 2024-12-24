@@ -46,7 +46,7 @@
 import vHeader from '../components/header.vue';
 import axios from 'axios';
 import {useMainStore} from '../store/data.ts';
-
+import io from 'socket.io-client';
 
 const mainStore = useMainStore()
 export default {
@@ -55,6 +55,7 @@ export default {
   },
   data() {
     return {
+      socket: null,
       index: 0,
       selectedAction: null,
       actions: [
@@ -73,9 +74,15 @@ export default {
     }
   },
   created() {
-    // this.updateSentence();
-    setInterval(this.updateSentence, 5000);
-    this.fetchAvailableConferences(); // Fetch available conferences on load
+    this.socket = io('http://10.32.25.161:7000');
+    this.socket.on('connect', () => {
+      console.log('Connected to server');
+      this.socket.emit('get_available_conferences');
+    });
+    this.socket.on('available_conferences', (data) => {
+        console.log(data)
+        this.fetchAvailableConferences(data); // Fetch available conferences on load
+      });
   },
   methods: {
     selectAction(action) {
@@ -113,17 +120,13 @@ export default {
       }
     },
 
-    async fetchAvailableConferences() {
-      try {
-        const response = await axios.get('http://127.0.0.1:7777/available_conferences');
-        if (response.status === 200 && response.data.status === 'success') {
-          this.availableConferences = response.data.conferences || [];
-          console.log('Available conferences:', this.availableConferences);
-        } else {
-          console.error('Failed to fetch conferences', response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching conferences:', error);
+    async fetchAvailableConferences(data) {
+      const {status: status, conferences: conferences} = data;
+      if (status === 'success') {
+        this.availableConferences = conferences;
+        console.log('Available conferences:', this.availableConferences);
+      } else {
+          console.error('Failed to fetch conferences', data);
       }
     },
 
@@ -345,6 +348,10 @@ input {
   text-align: center;
   color: #333;
 }
+.conference-list li {
+  text-align: center;
+  color: #333;
+}
 
 .conference-list ul {
   list-style-type: none;
@@ -357,7 +364,7 @@ input {
   padding: 10px;
   margin: 8px 0;
   background-color: #ffffff;
-  border: 1px solid #ddd;
+  border: 1px solid #ffffff;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
