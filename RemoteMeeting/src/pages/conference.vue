@@ -115,7 +115,7 @@
       this.socket.on('disconnect', () => {
         console.log('Disconnected to server');
       });
-      this.socket.on('message', (data) => {
+      this.socket.on('text_message', (data) => {
         console.log('Received message:');
         this.handleIncomingMessage(data);
       });
@@ -149,17 +149,7 @@
     },
     methods: {
         handleIncomingMessage(data) {
-          if (data.type === 'TEXT') {
             this.textOutput += `Text: ${data.message}\n`;
-          } else if (data.type === 'CREAT') {
-            this.textOutput += `Port Created: ${data.message}\n`;
-          } else if (data.type === 'JOIN') {
-            this.textOutput += `User Joined: ${data.message}\n`;
-          } else if (data.type === 'QUIT') {
-            this.textOutput += `User Quit: ${data.message}\n`;
-          } else {
-            this.textOutput += `Unknown Message: ${data.message}\n`;
-          }
           this.$nextTick(() => {
           const outputElement = this.$refs.textOutput; // 确保绑定了 ref="textOutput"
           if (outputElement) {
@@ -301,7 +291,7 @@
             });
 
             if (response.data.status === 'success') {
-              this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
+              // this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
               this.messageInput = "";  // 清空输入框
             } else {
               console.error('Error sending message:', response.data.message);

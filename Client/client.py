@@ -71,6 +71,9 @@ class ConferenceClient:
         self.audio_running = False
         self.audio_thread_receive=None
         self.audio_queue = None
+        
+        # message
+        self.message_thread = None 
 
         
         # screen share
@@ -110,14 +113,14 @@ class ConferenceClient:
                 if header == "TEXT ":
                     if self.conference_port == None:
                         self.conference_port = port
-                    self.socketio.emit('message', {'type': 'TEXT', 'message': payload})
+                    # self.socketio.emit('message', {'type': 'TEXT', 'message': payload})
                 elif header == "CREAT":
                     port_message = payload.split(' ')
                     self.conference_audio_port = int(port_message[0])
                     self.conference_video_port = int(port_message[1])
-                    self.socketio.emit('message', {'type': 'CREAT', 'message': payload})
+                    # self.socketio.emit('message', {'type': 'CREAT', 'message': payload})
                 elif header == "JOIN ":
-                    self.socketio.emit('message', {'type': 'JOIN', 'message': payload})
+                    # self.socketio.emit('message', {'type': 'JOIN', 'message': payload})
                     content = payload.split(':')
                     status_code, conference_id = content[0], content[1]
                     if status_code == "OK":
@@ -131,7 +134,7 @@ class ConferenceClient:
                         break
                     self.join_conference(conference_id)
                 elif header == "QUIT ":
-                    self.socketio.emit('message', {'type': 'QUIT', 'message': payload})
+                    # self.socketio.emit('message', {'type': 'QUIT', 'message': payload})
                     self.quit_conference()
                     # TODO: 完成取消会议的逻辑，添加按钮，添加会议管理员逻辑
             except Exception as e:
@@ -211,13 +214,16 @@ class ConferenceClient:
             message = request.get_json().get('message')
             if message:
                 try:
-                    data = f"TEXT {message}".encode()
-                    print(data)
-                    self.sio.emit('text_message', {'message': data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+                    
+                    # data = f"TEXT {message}".encode()
+                    # print(data)
+                    # self.sio.emit('text_message', {'message': data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+                    self.message_thread = threading.Thread(target=self.send_message, daemon=True,args=(message,))
+                    self.message_thread.start()
                     # self.Socket.sendto(data, (config.SERVER_IP_UDP,config.MAIN_SERVER_PORT_UDP))
                     return jsonify({
                     "status": "success",
-                    "message": f"Send TEXT {data}"
+                    "message": f"Send TEXT "
                     }), 200
                 except Exception as e:
                     return jsonify({
@@ -432,7 +438,11 @@ class ConferenceClient:
                 "text_output": text_output,
                 "conference_id": self.conference_id
             })
-
+        
+    def send_message(self,message):
+        data = message.encode()
+        print(data)
+        self.sio.emit('text_message', {'message': data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
 
     def send_video_stream(self):
         self.cap = cv2.VideoCapture(0)
@@ -458,19 +468,20 @@ class ConferenceClient:
         cv2.destroyAllWindows()
         
     def send_static_img(self):
-        while not self.video_running:
-            img = cv2.imread(self.image_path)
-            img = cv2.resize(img, (680, 480))
-            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            video_data = base64.b64encode(buffer).decode('utf-8')
+        # while not self.video_running:
+        #     img = cv2.imread(self.image_path)
+        #     img = cv2.resize(img, (680, 480))
+        #     _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+        #     video_data = base64.b64encode(buffer).decode('utf-8')
             
-            if not self.sio.connected:
-                    print("Waiting for reconnection...")
-                    continue
+        #     if not self.sio.connected:
+        #             print("Waiting for reconnection...")
+        #             continue
             
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
-        self.cap.release()
-        cv2.destroyAllWindows()
+            # self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+        # self.cap.release()
+        # cv2.destroyAllWindows()
+        pass
 
     def receive_video_stream(self, video_data,client_address):
         """
