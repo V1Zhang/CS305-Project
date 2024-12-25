@@ -92,23 +92,23 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.25.161:7000');
+      this.socket = io('http://10.32.98.215:7000');
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
         this.isHost = this.store.text === 1;
         try {
-            // 调用 Flask API 获取房间号
-            const response = await axios.get('http://127.0.0.1:7777/get_room');
-            const roomId = response.data.room_id;; // 提取房间号
-            this.conferenceId = roomId;
-            // 使用房间号加入房间
-            this.socket.emit('join_room', { room: roomId });           
+          // 调用 Flask API 获取房间号
+          const response = await axios.get('http://127.0.0.1:7777/get_room');
+          const roomId = response.data.room_id;; // 提取房间号
+          this.conferenceId = roomId;
+          // 使用房间号加入房间
+          this.socket.emit('join_room', { room: roomId });           
             
-            console.log(`Joined room: ${roomId}`);
-          } catch (error) {
-              console.error('Error fetching room ID:', error);
-          }
+          console.log(`Joined room: ${roomId}`);
+        } catch (error) {
+          console.error('Error fetching room ID:', error);
+        }
 
         this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
       });
@@ -132,6 +132,10 @@
 
       this.socket.on('screen_frame', (data) => {
         this.handleIncomingScreenShare(data); 
+      });
+
+      this.socket.on('cancel_conference', (data) => {
+        this.$router.push('/mode');
       });
 
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
