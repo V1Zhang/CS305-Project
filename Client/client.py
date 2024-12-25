@@ -89,6 +89,8 @@ class ConferenceClient:
                             rate=44100,              # 采样率
                             output=True,             # 输出模式
                             frames_per_buffer=2048)  # 缓冲区大小
+        
+       
     
     
 
@@ -352,20 +354,18 @@ class ConferenceClient:
             print(f"Disconnected from server. Reason: {reason}")
             
 
-        @self.sio.on('audio_stream')
-        def handle_audio_stream(data):
+        # @self.sio.on('audio_stream')
+        # def handle_audio_stream(data):
             """Handle incoming audio stream.""" 
-            audio_data = base64.b64decode(data)
-            self.audio_stream_write.write(audio_data)
+            # audio_data = base64.b64decode(data)
+            # self.audio_stream_write.write(audio_data)
+            #print('receive')
                 
             
     def create_conference(self):
         if not self.conference_id:
             conference_id = ''.join(random.choices('0123456789', k=6))
             if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-                host_thread.start()
-                self.threads['host'] = host_thread
                 text_output = f"Conference id {conference_id} Created."
                 self.conference_id = conference_id
                 self.host = True
@@ -410,8 +410,7 @@ class ConferenceClient:
             self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
-        guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-        guest_thread.start()
+        
         return jsonify({
                 "status": "success",
                 "text_output": text_output,
@@ -527,7 +526,8 @@ class ConferenceClient:
                             channels=1,              # 单声道
                             rate=44100,              # 采样率
                             input=True,              # 输入模式
-                            frames_per_buffer=4096)  # 缓冲区大小
+                            frames_per_buffer=2048)  # 缓冲区大小
+    
         while self.audio_running:
             # 从麦克风读取音频数据
             audio_data = self.audio_stream.read(2048)

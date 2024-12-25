@@ -91,7 +91,7 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.25.161:7000');
+      this.socket = io('http://10.32.98.215:7000');
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
@@ -125,7 +125,8 @@
         this.handleIncomingVideoStream(data);
       });
 
-      this.socket.on('audio-stream', (data) => {
+      this.socket.on('audio_stream', (data) => {
+        console.log('audio stream')
         this.handleIncomingAudioStream(data);
       });
 
@@ -179,6 +180,44 @@
             });
           }
         },
+
+
+        handleIncomingAudioStream(data) {
+          const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
+          if (!encodedAudio) {
+            console.error("No audio buffer received.");
+            return;
+          }
+
+          // Decode Base64 audio data into raw PCM
+          const binaryString = atob(encodedAudio);
+          const len = binaryString.length;
+          const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
+          for (let i = 0; i < len; i += 2) {
+            pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
+          }
+
+          // Create an AudioBuffer from PCM data
+          const audioBuffer = this.audioContext.createBuffer(
+            1, // Mono
+            pcmArray.length, // Number of samples
+            44100 // Sample rate (must match sender)
+          );
+          const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
+          for (let i = 0; i < pcmArray.length; i++) {
+            bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
+          }
+
+          // Play the audio
+          const source = this.audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioContext.destination);
+          source.start(0);
+
+          // Save for cleanup (if needed)
+          this.audioSource = source;
+        },
+
 
         handleIncomingScreenShare(data) {
           const { frame: videoFrame, sender_id: clientAddress } = data;

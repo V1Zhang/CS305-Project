@@ -179,8 +179,11 @@ class MainServer:
         def handle_audio_stream(sid,data):
             # audio_data = base64.b64decode(data)
             room = data.get("room")
-            data = data.get("data")
-            self.sio.emit('audio_stream', data,room=room)
+            audio = data.get("data")
+            frame_with_sender = {
+                'audio': audio,
+            }
+            self.sio.emit('audio_stream', frame_with_sender,room=room)
             
         @self.sio.on('heartbeat')  # 自定义心跳事件
         def heartbeat(sid, data):
