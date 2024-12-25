@@ -25,7 +25,7 @@ class MainServer:
         self.main_server = None
 
         self.conference_conns = None
-        self.conference_servers = set()
+        self.conference_servers = {}
         self.clients = []
         self.threads = {}
         # build socket
@@ -83,6 +83,14 @@ class MainServer:
         @self.sio.event
         def join_room(sid, data):
             room = data.get('room')
+
+            if room not in self.conference_servers:
+                self.conference_servers[room] = {
+                    "clients_info": []  # Initialize an empty list
+                }
+                self.conference_servers[room]["clients_info"].append(sid)
+                conferences = [conference_id for conference_id, server in self.conference_servers.items()]
+                print(conferences)
             if room:
                 self.sio.enter_room(sid, room)
                 print(f"Client {sid} joined room {room}")
@@ -116,16 +124,18 @@ class MainServer:
         #     await self.sio.emit('conference_created', {'conference_id': conference_id}, to=sid)
 
         @self.sio.on('join_conference')
-        async def handle_join_conference(sid, data):
+        def handle_join_conference(sid, data):
             conference_id = data.get('conference_id')
-            self.conference_servers.add(conference_id)
             if conference_id not in self.conference_servers:
-                await self.sio.emit('error', {'message': f'Conference {conference_id} not found.'}, to=sid)
+                self.conference_servers[conference_id].clients_info.append(sid)
+                conferences = [conference_id for conference_id, server in self.conference_servers.items()]
+                print(conferences)
+                self.sio.emit('create_conference', {'conference_id': conference_id}, to=sid)
                 return
 
             self.conference_servers[conference_id].clients_info.append(sid)
             print(f"Client {sid} joined conference {conference_id}.")
-            await self.sio.emit('joined_conference', {'conference_id': conference_id}, to=sid)
+            self.sio.emit('joined_conference', {'conference_id': conference_id}, to=sid)
 
         @self.sio.on('get_available_conferences')
         def get_available_conferences(sid):
