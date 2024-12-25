@@ -190,10 +190,10 @@ class ConferenceClient:
                 isHost = request.get_json().get('isHost')
                 if isHost:
                     print("Host quit the conference.")
-                    self.quit_conference()
+                    self.cancel_conference()
                 else:
                     print("User quit the conference.")
-                    self.leave_conference()
+                    self.quit_conference()
                 return jsonify({
                     "status": "success",
                     "message": f"Left Conference {self.conference_id} successfully."
@@ -353,6 +353,12 @@ class ConferenceClient:
         def disconnect(reason=None):
             print(f"Disconnected from server. Reason: {reason}")
             
+        @self.sio.on('room_cancelled')
+        def handle_room_cancelled(data):
+            print(f"Room {data['room']} has been cancelled.")
+            self.conference_id = None #TODO:conference_id should be reduced
+            self.sio.emit('room_cancelled_ack', { 'room': data['room'] })
+            
 
         # @self.sio.on('audio_stream')
         # def handle_audio_stream(data):
@@ -418,17 +424,26 @@ class ConferenceClient:
         if not self.conference_id:
             print("Warning", "You are not in a conference.")
             return
-        # message = f"QUIT {self.conference_id}"
-        # try:
-        #     data = message.encode()
-        #     self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
-        #     text_output = f"Sent: {message}\n"
-        # except Exception as e:
-        #     print("Error", f"Error sending message: {e}")
+        
+        self.sio.emit('leave_room', { 'room': self.conference_id })
         self.conference_id = None
-        self.conference_port = None
-        self.join_success.clear()
+        # self.conference_port = None
+        # self.join_success.clear()
         text_output = text_output + "Left the conference.\n"
+        return jsonify({
+                "status": "success",
+                "text_output": text_output,
+                "conference_id": self.conference_id
+            })
+        
+    def cancel_conference(self):
+        if not self.conference_id:
+            print("Warning", "You are not in a conference.")
+            return
+        
+        self.emit('cancel_room',{ 'room': self.conference_id })
+        self.conference_id = None
+        text_output = text_output + "Cancel the conference.\n"
         return jsonify({
                 "status": "success",
                 "text_output": text_output,

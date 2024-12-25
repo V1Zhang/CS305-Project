@@ -195,6 +195,60 @@ class MainServer:
         def heartbeat(sid, data):
             print(f'Heartbeat from {sid}: {data}')
             self.sio.emit('heartbeat_response', {'status': 'ok'}, to=sid)
+        
+        @self.sio.on('leave_room') # a client leaves the room
+        def handle_leave_room(sid, data):
+            room = data.get('room')
+            self.sio.leave_room(sid, room)
+            print(f"Client {sid} left room {room}")
+            room_clients = list(self.sio.manager.get_participants("/", room))
+            cnt = 0
+            for client_sid, _ in room_clients:
+                if self.sio.get_session(sid,namespace='/'):
+                    cnt += 1
+            print(f"Number of clients in room {room}: {cnt}")
+            # Change the mode of the room according to the number of clients in the room
+            if cnt <= 2:
+                self.room_manager[room] = 0
+            elif cnt > 2:
+                self.room_manager[room] = 1
+            
+            self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':cnt},room=room)
+            
+        @self.sio.on('cancel_room')
+        def handle_cancel_room(sid, data):
+            room = data.get('room')
+            self.sio.emit('room_cancelled', room=room)
+            print(f"Room {room} is closed.")
+            
+        @self.sio.on('room_cancelled_ack') # count the number of acks
+        def handle_room_cancelled_ack(sid, data):
+            room = data.get('room')
+            self.sio.close_room(room)
+            
+            
+        @self.sio.on('get_clients')
+        def handle_get_clients(sid, data):
+            room = data.get('room')
+            room_clients = list(self.sio.manager.get_participants("/", room)) # the return value is a list of (socketid,sid)
+            print(room_clients)
+            # Acquire the ports of each client
+            clients_info = []
+            for client_sid,_ in room_clients:
+                # if client_sid != sid:
+                    session_data = self.sio.get_session(client_sid,namespace='/')
+                    if session_data:
+                        client_info = {
+                            'sid': client_sid,
+                            'udp_socket': session_data.get('udpSocket'),
+                            'video_socket': session_data.get('videoSocket'),
+                            'audio_socket': session_data.get('audioSocket'),
+                            'screen_socket': session_data.get('screenSocket')
+                        }
+                        clients_info.append(client_info)
+            
+            self.sio.emit(event='clients_list', data=clients_info, to=sid)
+            print(f"Client {sid} requested clients list in room {room}")
 
 
 if __name__ == '__main__':
