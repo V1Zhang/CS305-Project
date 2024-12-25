@@ -2,8 +2,8 @@
   <div>
     <v-header />
     <div class="conference-header">
-        <span>Conference ID: {{ conferenceId }}</span>
-      </div>
+      <span>Conference ID: {{ conferenceId }}</span>
+    </div>
     <div class="container">
       <!-- 左侧按钮和视频 -->
       <div id="video-button-container">
@@ -35,7 +35,10 @@
           <!-- 屏幕共享区 -->
           <div class="screen-share-container">
             <div class="video-header">Screen Share</div>
+
             <img id="player" style="width:904px;height:576px"/>
+
+
           </div>
         </div>
       </div>
@@ -46,13 +49,8 @@
           <textarea v-model="textOutput" readonly class="output-textarea"></textarea>
         </div>
         <div class="message-input">
-          <input
-            type="text"
-            v-model="messageInput"
-            @keyup.enter="sendMessage"
-            placeholder="Type a message..."
-            class="input-textarea"
-          />
+          <input type="text" v-model="messageInput" @keyup.enter="sendMessage" placeholder="Type a message..."
+            class="input-textarea" />
           <button @click="sendMessage" class="action-button warning">
             <span class="action-icon">✉️</span> Send Message
           </button>
@@ -121,10 +119,11 @@
         this.handleIncomingMessage(data);
       });
 
-      this.socket.on('video_frame', (data) => {
-        // console.log('Video stream')
-        this.handleIncomingVideoStream(data);
-      });
+    this.socket.on('video_frame', (data) => {
+      // console.log('Video stream')
+      this.handleIncomingVideoStream(data);
+    });
+
 
       this.socket.on('audio_stream', (data) => {
         console.log('audio stream')
@@ -135,9 +134,13 @@
         this.handleIncomingScreenShare(data); 
       });
 
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.socket.on('room_cancelled', (data) => {
+        this.$router.push('/mode')
+      });
 
     },
+
+
     mounted() {
     // 在页面加载后自动调用 toggleVideoStream
     // this.toggleVideoStream();
@@ -340,22 +343,24 @@
             console.error("Error sending message:", error);
           }
         },
-
-
-
     }
   }
-  </script>
-  
-  <style scoped>
-    
-  .container {
-  display: flex;  /* 使用 Flexbox 让子元素并排显示 */
-  justify-content: space-between;  /* 在主轴方向上分配空间 */
-  align-items: flex-start;  /* 垂直方向对齐 */
+
+
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  /* 使用 Flexbox 让子元素并排显示 */
+  justify-content: space-between;
+  /* 在主轴方向上分配空间 */
+  align-items: flex-start;
+  /* 垂直方向对齐 */
   padding: 20px;
   margin-top: 0;
-  gap: 20px;  /* 为左右容器之间增加间距 */
+  gap: 20px;
+  /* 为左右容器之间增加间距 */
 }
 
 .conference-header {
@@ -366,7 +371,8 @@
   background-color: #f0f0f0;
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;  /* 给下方内容添加一些间距 */
+  margin-bottom: 20px;
+  /* 给下方内容添加一些间距 */
 }
 
 .conference-header span {
@@ -376,11 +382,13 @@
 
 #video-button-container {
   display: flex;
-  flex-direction: column;  /* 垂直排列按钮 */
+  flex-direction: column;
+  /* 垂直排列按钮 */
   justify-content: flex-start;
   align-items: center;
-  width: 70%; 
-  background-color: #f5f5f5;  /* 背景色 */
+  width: 70%;
+  background-color: #f5f5f5;
+  /* 背景色 */
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
@@ -388,8 +396,10 @@
 .buttons-container {
   display: flex;
   flex-direction: row;
-  gap: 20px;  /* 按钮之间的间距 */
-  margin-top: 20px;  /* 按钮容器顶部间距 */
+  gap: 20px;
+  /* 按钮之间的间距 */
+  margin-top: 20px;
+  /* 按钮容器顶部间距 */
 }
 
 .action-button {
@@ -421,8 +431,10 @@
 /* 视频显示区域 */
 .video-container {
   display: flex;
-  flex-direction: column;  /* 上下排列视频窗口和屏幕共享区域 */
-  gap: 10px;  /* 设置间距 */
+  flex-direction: column;
+  /* 上下排列视频窗口和屏幕共享区域 */
+  gap: 10px;
+  /* 设置间距 */
   margin-top: 20px;
 }
 
@@ -439,11 +451,13 @@
   padding: 10px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
 }
+
 .camera-container img {
   max-width: 25%;
   max-height: 25%;
   object-fit: contain;
 }
+
 .screen-share-container {
   background-color: #f0f0f0;
   border-radius: 8px;
@@ -452,7 +466,8 @@
 }
 
 .screen-share-container img {
-  width: 100%;  /* 自适应宽度 */
+  width: 100%;
+  /* 自适应宽度 */
   max-width: 704px;
   max-height: 576px;
   object-fit: contain;
@@ -463,7 +478,8 @@
 /* 聊天容器 */
 #chat-container {
   right: 0;
-  top: 20%;  /* 防止和底部重叠 */
+  top: 20%;
+  /* 防止和底部重叠 */
   width: 450px;
   background-color: #f9f9f9;
   border: 1px solid #ddd;
@@ -510,5 +526,4 @@
   font-family: Arial, sans-serif;
   font-size: 14px;
 }
-
 </style>
