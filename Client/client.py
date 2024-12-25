@@ -189,8 +189,10 @@ class ConferenceClient:
             try:
                 isHost = request.get_json().get('isHost')
                 if isHost:
+                    print("Host quit the conference.")
                     self.quit_conference()
                 else:
+                    print("User quit the conference.")
                     self.leave_conference()
                 return jsonify({
                     "status": "success",
@@ -352,12 +354,11 @@ class ConferenceClient:
             print(f"Disconnected from server. Reason: {reason}")
             
 
-        @self.sio.on('audio_stream')
-        def handle_audio_stream(data):
-            """Handle incoming audio stream.""" 
-            audio_data = base64.b64decode(data)
-            self.audio_stream_write.write(audio_data)
-            # print("Received")
+        # @self.sio.on('audio_stream')
+        # def handle_audio_stream(data):
+        #     """Handle incoming audio stream.""" 
+        #     audio_data = base64.b64decode(data)
+        #     self.audio_stream_write.write(audio_data)
                 
             
     def create_conference(self):
