@@ -278,7 +278,7 @@ class MainServer:
 
             # Run ConferenceServer in a separate thread
             conference_thread = threading.Thread(target=self.run_conference_server, args=(conference_server,))
-            conference_thread.start()
+            conference_thread.start() 
             self.threads[conference_id] = conference_thread
 
             print(f"Conference {conference_id} created by {sid}.")
