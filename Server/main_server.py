@@ -17,15 +17,18 @@ import logging
 import sys
 import os
 
+# Configure mode for the server: CS/P2P -- 1/0
+MODE = 0
+
 class MainServer:
     def __init__(self, server_ip, main_port):
         # async server
+        self.room_manager = {} # Record the mode of each room: 0 for P2P, 1 for CS
         self.server_ip = server_ip
         self.server_port = main_port
         self.main_server = None
-
         self.conference_conns = None
-        self.conference_servers = set()
+        self.conference_servers = {}
         self.clients = []
         self.threads = {}
         # build socket
@@ -38,18 +41,17 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins='*',
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://127.0.0.1:7000","https://admin.socket.io"],
                                    ping_interval=10, ping_timeout=20 ,
+
                                    max_http_buffer_size=10000000,
                                    logger=False,  # 禁用 Flask-SocketIO 的日志输出
                                    engineio_logger=False  # 禁用 Engine.IO 的日志输出
                                    )
-        
         self.sio.instrument(auth={
             'username':'admin',
-            'password':'123456',
-        }
-        )
+            'password':'123456'
+        })
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
@@ -75,28 +77,54 @@ class MainServer:
 
         @self.sio.event
         def connect(sid, environ):
-            # 从请求头中提取查询字符串
-            query_string = environ.get("QUERY_STRING", "")
-            params = dict(item.split("=") for item in query_string.split("&") if "=" in item)
-            room = params.get("room")  # 获取房间号参数
-            if room:
-                self.sio.enter_room(sid, room)  # 将客户端加入指定房间
-                print(f"Client {sid} connected and joined room {room}")
-                # self.sio.emit("room_joined", {"message": f"Joined room {room}"}, room=sid)
-            else:
-                print(f"Client {sid} connected without specifying a room")
-                # self.sio.emit("error", {"message": "Room not specified"}, room=sid)
+            print(environ)
+                
         @self.sio.event
-        def join_room(sid, data):
+        def join_room(sid, data): # the sid is the socket id
             room = data.get('room')
+
+            udp_socket = data.get('udpSocket')
+            video_socket = data.get('videoSocket')
+            audio_socket = data.get('audioSocket')
+            screen_socket = data.get('screenSocket')
+            if udp_socket:
+                print(f"Client {sid} joined room {room} with UDP socket {udp_socket}")
+                self.sio.save_session(sid, {'room': room, 
+                                            'udpSocket': udp_socket, 
+                                            'videoSocket': video_socket, 
+                                            'audioSocket': audio_socket, 
+                                            'screenSocket': screen_socket}
+                                    )
+            
             if room:
+                if room not in self.conference_servers:
+                    self.conference_servers[room] = {
+                        "clients_info": []  # Initialize an empty list
+                    }
+                    self.conference_servers[room]["clients_info"].append(sid)
+                    conferences = [conference_id for conference_id, server in self.conference_servers.items()]
+                    print(conferences)
                 self.sio.enter_room(sid, room)
                 print(f"Client {sid} joined room {room}")
-                # self.sio.emit('room_joined', {'message': f'Joined room {room}'}, room=sid)
+                
+                # Checkt if the client is a valid p2p client
+                
+                room_clients = list(self.sio.manager.get_participants("/", room))
+                cnt = 0
+                for client_sid, _ in room_clients:
+                    if self.sio.get_session(sid,namespace='/'):
+                        cnt += 1
+                print(f"Number of clients in room {room}: {cnt}")
+                
+                # Change the mode of the room according to the number of clients in the room
+                if cnt <= 2:
+                    self.room_manager[room] = 0
+                elif cnt > 2:
+                    self.room_manager[room] = 1
+                    
+                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
             else:
                 print('error')
-                # self.sio.emit('error', {'message': 'Room not specified'}, room=sid)
-
 
         @self.sio.event
         def disconnect(sid):
@@ -122,16 +150,18 @@ class MainServer:
         #     await self.sio.emit('conference_created', {'conference_id': conference_id}, to=sid)
 
         @self.sio.on('join_conference')
-        async def handle_join_conference(sid, data):
+        def handle_join_conference(sid, data):
             conference_id = data.get('conference_id')
-            self.conference_servers.add(conference_id)
             if conference_id not in self.conference_servers:
-                await self.sio.emit('error', {'message': f'Conference {conference_id} not found.'}, to=sid)
+                self.conference_servers[conference_id].clients_info.append(sid)
+                conferences = [conference_id for conference_id, server in self.conference_servers.items()]
+                print(conferences)
+                self.sio.emit('create_conference', {'conference_id': conference_id}, to=sid)
                 return
 
             self.conference_servers[conference_id].clients_info.append(sid)
             print(f"Client {sid} joined conference {conference_id}.")
-            await self.sio.emit('joined_conference', {'conference_id': conference_id}, to=sid)
+            self.sio.emit('joined_conference', {'conference_id': conference_id}, to=sid)
 
         @self.sio.on('get_available_conferences')
         def get_available_conferences(sid):
@@ -188,8 +218,11 @@ class MainServer:
         def handle_audio_stream(sid,data):
             # audio_data = base64.b64decode(data)
             room = data.get("room")
-            data = data.get("data")
-            self.sio.emit('audio_stream', data,room=room)
+            audio = data.get("data")
+            frame_with_sender = {
+                'audio': audio,
+            }
+            self.sio.emit('audio_stream', frame_with_sender,room=room)
             
         @self.sio.on('heartbeat')  # 自定义心跳事件
         def heartbeat(sid, data):

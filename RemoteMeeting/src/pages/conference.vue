@@ -35,7 +35,10 @@
           <!-- 屏幕共享区 -->
           <div class="screen-share-container">
             <div class="video-header">Screen Share</div>
-            <img id="player" style="width:904px;height:576px" />
+
+            <img id="player" style="width:904px;height:576px"/>
+
+
           </div>
         </div>
       </div>
@@ -73,7 +76,7 @@
         socket: null,
         store: useMainStore(),
         conferenceId: "",  
-        isHost: this.store.text === 1,
+        isHost: true,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
         screenShareButtonText: "Start Screen Share",
@@ -91,19 +94,19 @@
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
-
-      try {
-        // 调用 Flask API 获取房间号
-        const response = await axios.get('http://127.0.0.1:7777/get_room');
-        const roomId = response.data.room_id;; // 提取房间号
-        this.conferenceId = roomId;
-        // 使用房间号加入房间
-        this.socket.emit('join_room', { room: roomId });
-
-        console.log(`Joined room: ${roomId}`);
-      } catch (error) {
-        console.error('Error fetching room ID:', error);
-      }
+        this.isHost = this.store.text === 1;
+        try {
+            // 调用 Flask API 获取房间号
+            const response = await axios.get('http://127.0.0.1:7777/get_room');
+            const roomId = response.data.room_id;; // 提取房间号
+            this.conferenceId = roomId;
+            // 使用房间号加入房间
+            this.socket.emit('join_room', { room: roomId });           
+            
+            console.log(`Joined room: ${roomId}`);
+          } catch (error) {
+              console.error('Error fetching room ID:', error);
+          }
 
       this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
     });
@@ -121,22 +124,27 @@
       this.handleIncomingVideoStream(data);
     });
 
-    this.socket.on('audio-stream', (data) => {
-      console.log('Received audio stream data:');
-      this.handleIncomingAudioStream(data);
-    });
+
+      this.socket.on('audio_stream', (data) => {
+        console.log('audio stream')
+        this.handleIncomingAudioStream(data);
+      });
 
     this.socket.on('screen_frame', (data) => {
       this.handleIncomingScreenShare(data);
     });
 
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.socket.on('room_cancelled', (data) => {
+        this.$router.push('/mode')
+      });
 
-  },
-  mounted() {
+    },
+
+
+    mounted() {
     // 在页面加载后自动调用 toggleVideoStream
-    this.toggleVideoStream();
-  },
+    // this.toggleVideoStream();
+    },
 
   beforeDestroy() {
     // 断开 WebSocket 连接
@@ -161,58 +169,60 @@
       // console.log("sender_id (clientAddress):", clientAddress);
 
 
-      // 查找是否已有该客户端的视频窗口
-      const existingStream = this.videoStreams.find(
-        (stream) => stream.clientAddress === clientAddress
-      );
+          // 查找是否已有该客户端的视频窗口
+          const existingStream = this.videoStreams.find(
+            (stream) => stream.clientAddress === clientAddress
+          );
+          
+          if (existingStream) {
+            // 如果已存在该客户端的视频流，更新视频帧
+            existingStream.videoFrame = videoFrame;
+          } else {
+            // 如果该客户端的视频流不存在，新增视频流
+            this.videoStreams.push({
+              clientAddress,
+              videoFrame
+            });
+          }
+        },
 
-      if (existingStream) {
-        // 如果已存在该客户端的视频流，更新视频帧
-        existingStream.videoFrame = videoFrame;
-      } else {
-        // 如果该客户端的视频流不存在，新增视频流
-        this.videoStreams.push({
-          clientAddress,
-          videoFrame
-        });
-      }
-    },
 
-    handleIncomingAudioStream(data) {
-      const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
-      if (!encodedAudio) {
-        console.error("No audio buffer received.");
-        return;
-      }
+        handleIncomingAudioStream(data) {
+          const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
+          if (!encodedAudio) {
+            console.error("No audio buffer received.");
+            return;
+          }
 
-      // Decode Base64 audio data into raw PCM
-      const binaryString = atob(encodedAudio);
-      const len = binaryString.length;
-      const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
-      for (let i = 0; i < len; i += 2) {
-        pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
-      }
+          // Decode Base64 audio data into raw PCM
+          const binaryString = atob(encodedAudio);
+          const len = binaryString.length;
+          const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
+          for (let i = 0; i < len; i += 2) {
+            pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
+          }
 
-      // Create an AudioBuffer from PCM data
-      const audioBuffer = this.audioContext.createBuffer(
-        1, // Mono
-        pcmArray.length, // Number of samples
-        44100 // Sample rate (must match sender)
-      );
-      const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
-      for (let i = 0; i < pcmArray.length; i++) {
-        bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
-      }
+          // Create an AudioBuffer from PCM data
+          const audioBuffer = this.audioContext.createBuffer(
+            1, // Mono
+            pcmArray.length, // Number of samples
+            44100 // Sample rate (must match sender)
+          );
+          const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
+          for (let i = 0; i < pcmArray.length; i++) {
+            bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
+          }
 
-      // Play the audio
-      const source = this.audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.audioContext.destination);
-      source.start(0);
+          // Play the audio
+          const source = this.audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioContext.destination);
+          source.start(0);
 
-      // Save for cleanup (if needed)
-      this.audioSource = source;
-    },
+          // Save for cleanup (if needed)
+          this.audioSource = source;
+        },
+
 
     handleIncomingScreenShare(data) {
       const { frame: videoFrame, sender_id: clientAddress } = data;
@@ -324,21 +334,20 @@
           message: this.messageInput,
         });
 
-        if (response.data.status === 'success') {
-          // this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
-          this.messageInput = "";  // 清空输入框
-        } else {
-          console.error('Error sending message:', response.data.message);
-        }
-      } catch (error) {
-        console.error("Error sending message:", error);
-      }
-    },
-
-
-
+            if (response.data.status === 'success') {
+              // this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
+              this.messageInput = "";  // 清空输入框
+            } else {
+              console.error('Error sending message:', response.data.message);
+            }
+          } catch (error) {
+            console.error("Error sending message:", error);
+          }
+        },
+    }
   }
-}
+
+
 </script>
 
 <style scoped>
