@@ -91,7 +91,7 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.25.161:7000');
+      this.socket = io('http://10.32.98.215:7000');
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
@@ -197,9 +197,9 @@
                 });
 
                 if (response.status === 200) {
-                console.log("Conference Created: ", response.data);
+                console.log("Conference quited: ", response.data);
                 } else {
-                console.error("Failed to create conference", response.data);
+                console.error("Failed to quit conference", response.data);
                 }
             } catch (error) {
                 console.error("Error creating conference:", error);

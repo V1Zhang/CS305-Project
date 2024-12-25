@@ -38,12 +38,18 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins="http://localhost:5173",
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins='*',
                                    ping_interval=10, ping_timeout=20 ,
                                    max_http_buffer_size=10000000,
                                    logger=False,  # 禁用 Flask-SocketIO 的日志输出
                                    engineio_logger=False  # 禁用 Engine.IO 的日志输出
                                    )
+        
+        self.sio.instrument(auth={
+            'username':'admin',
+            'password':'123456',
+        }
+        )
 
         self.app = socketio.Middleware(self.sio)
         self.register_socketio_events()
@@ -159,7 +165,7 @@ class MainServer:
                 'frame': data['frame'],
                 'sender_id': data['sender_id']  # Use the Socket.IO sid as the sender identifier
             }
-            print(data['sender_id'])
+            # print(data['sender_id'])
             self.sio.emit('video_frame', frame_with_sender,room=room)
             
         @self.sio.on('screen_frame')

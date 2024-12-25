@@ -357,16 +357,13 @@ class ConferenceClient:
             """Handle incoming audio stream.""" 
             audio_data = base64.b64decode(data)
             self.audio_stream_write.write(audio_data)
+            # print("Received")
                 
             
     def create_conference(self):
         if not self.conference_id:
             conference_id = ''.join(random.choices('0123456789', k=6))
             if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-                host_thread.start()
-                self.threads['host'] = host_thread
-                text_output = f"Conference id {conference_id} Created."
                 self.conference_id = conference_id
                 self.host = True
                 message = f"CREAT{conference_id}"
@@ -410,8 +407,6 @@ class ConferenceClient:
             self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
-        guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-        guest_thread.start()
         return jsonify({
                 "status": "success",
                 "text_output": text_output,
@@ -527,10 +522,13 @@ class ConferenceClient:
                             channels=1,              # 单声道
                             rate=44100,              # 采样率
                             input=True,              # 输入模式
-                            frames_per_buffer=4096)  # 缓冲区大小
+                            frames_per_buffer=2048)  # 缓冲区大小
         while self.audio_running:
-            # 从麦克风读取音频数据
-            audio_data = self.audio_stream.read(2048)
+            try:
+                audio_data = self.audio_stream.read(2048)
+            except OSError as e:
+                print(f"Error reading audio stream: {e}")
+                continue
             encoded_audio = base64.b64encode(audio_data).decode('utf-8')
             # 发送音频数据到服务器
             if not self.sio.connected:
