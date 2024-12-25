@@ -60,27 +60,17 @@ class ConferenceServer:
         self.audio_mixer_task = None
 
 
-    
-        
-
-
     async def handle_data(self, reader, writer, data_type):
         """
         running task: receive sharing stream data from a client and decide how to forward them to the rest clients
         """
         # timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
 
-
-
-
     async def handle_client(self, reader, writer):
         """
         running task: handle the in-meeting requests or messages from clients
         """
-        
-
     
-
     async def log(self):
         while self.running:
             print('Something about server status')

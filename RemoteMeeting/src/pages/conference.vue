@@ -87,12 +87,12 @@
         messageInput: "",      // 用户输入的消息
         videoStreams: [],
         screenShareStream: null, // 存储屏幕共享流
-        videoStreamStatus: true,
+        videoStreamStatus: false,
       }
     },
     created() {
       this.socket = io('http://10.32.25.161:7000');
-
+      
       this.socket.on('connect', async () => {
       console.log('Connected to server');
 
@@ -109,15 +109,13 @@
               console.error('Error fetching room ID:', error);
           }
 
-
-
         this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
-    });
+      });
 
       this.socket.on('disconnect', () => {
         console.log('Disconnected to server');
       });
-      this.socket.on('message', (data) => {
+      this.socket.on('text_message', (data) => {
         console.log('Received message:');
         this.handleIncomingMessage(data);
       });
@@ -151,17 +149,7 @@
     },
     methods: {
         handleIncomingMessage(data) {
-          if (data.type === 'TEXT') {
             this.textOutput += `Text: ${data.message}\n`;
-          } else if (data.type === 'CREAT') {
-            this.textOutput += `Port Created: ${data.message}\n`;
-          } else if (data.type === 'JOIN') {
-            this.textOutput += `User Joined: ${data.message}\n`;
-          } else if (data.type === 'QUIT') {
-            this.textOutput += `User Quit: ${data.message}\n`;
-          } else {
-            this.textOutput += `Unknown Message: ${data.message}\n`;
-          }
           this.$nextTick(() => {
           const outputElement = this.$refs.textOutput; // 确保绑定了 ref="textOutput"
           if (outputElement) {
@@ -178,7 +166,6 @@
           // 查找是否已有该客户端的视频窗口
           const existingStream = this.videoStreams.find(
             (stream) => stream.clientAddress === clientAddress
-
           );
           
           if (existingStream) {
@@ -304,7 +291,7 @@
             });
 
             if (response.data.status === 'success') {
-              this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
+              // this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域
               this.messageInput = "";  // 清空输入框
             } else {
               console.error('Error sending message:', response.data.message);
