@@ -94,6 +94,7 @@ export default {
       }
     },
     async handleActionClick(action) {
+      mainStore.update({text: action.id, name: action.name});
       if (action.id === 1) {  //  "Create Meeting"
       try {
             // 发送 POST 请求到后端的 create_conference 方法

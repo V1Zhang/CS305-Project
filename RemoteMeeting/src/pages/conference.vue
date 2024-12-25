@@ -64,6 +64,7 @@
 </template>
   
   <script>
+  import {useMainStore} from '../store/data';
   import vHeader from '../components/header.vue';
   import axios from 'axios';
   import io from 'socket.io-client';
@@ -75,9 +76,9 @@
     data() {
       return {        
         socket: null,
-
+        store: useMainStore(),
         conferenceId: "",  
-        isHost: false,
+        isHost: this.store.text === 1,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
         screenShareButtonText: "Start Screen Share",
