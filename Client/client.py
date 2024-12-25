@@ -366,7 +366,6 @@ class ConferenceClient:
         if not self.conference_id:
             conference_id = ''.join(random.choices('0123456789', k=6))
             if conference_id and conference_id.isdigit():
-                text_output = f"Conference id {conference_id} Created."
                 self.conference_id = conference_id
                 self.host = True
                 message = f"CREAT{conference_id}"
@@ -410,7 +409,6 @@ class ConferenceClient:
             self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
-        
         return jsonify({
                 "status": "success",
                 "text_output": text_output,
@@ -467,20 +465,20 @@ class ConferenceClient:
         cv2.destroyAllWindows()
         
     def send_static_img(self):
-        # while not self.video_running:
-        #     img = cv2.imread(self.image_path)
-        #     img = cv2.resize(img, (680, 480))
-        #     _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-        #     video_data = base64.b64encode(buffer).decode('utf-8')
+        while not self.video_running:
+            img = cv2.imread(self.image_path)
+            img = cv2.resize(img, (680, 480))
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
             
-        #     if not self.sio.connected:
-        #             print("Waiting for reconnection...")
-        #             continue
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
             
-            # self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
-        # self.cap.release()
-        # cv2.destroyAllWindows()
-        pass
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+        self.cap.release()
+        cv2.destroyAllWindows()
+
 
     def receive_video_stream(self, video_data,client_address):
         """
