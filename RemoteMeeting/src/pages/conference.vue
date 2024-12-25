@@ -57,38 +57,39 @@
 
   </div>
 </template>
+  
+  <script>
+  import {useMainStore} from '../store/data';
+  import vHeader from '../components/header.vue';
+  import axios from 'axios';
+  import io from 'socket.io-client';
 
-<script>
-import vHeader from '../components/header.vue';
-import axios from 'axios';
-import io from 'socket.io-client';
-
-export default {
-  components: {
-    vHeader,
-  },
-  data() {
-    return {
-      socket: null,
-
-      conferenceId: "",
-      isHost: false,
-      videoButtonText: "Start Video Stream",
-      audioButtonText: "Start Audio Stream",
-      screenShareButtonText: "Start Screen Share",
-      audioContext: null, // Web Audio API AudioContext
-      audioSource: null, // Web Audio API AudioBufferSourceNode
-      textOutput: "",        // 显示接收到的消息
-      messageInput: "",      // 用户输入的消息
-      videoStreams: [],
-      screenShareStream: null, // 存储屏幕共享流
-      videoStreamStatus: false,
-    }
-  },
-  created() {
-    this.socket = io('http://10.32.98.215:7000');
-
-    this.socket.on('connect', async () => {
+  export default {
+    components: {
+      vHeader,
+    },
+    data() {
+      return {        
+        socket: null,
+        store: useMainStore(),
+        conferenceId: "",  
+        isHost: this.store.text === 1,
+        videoButtonText: "Start Video Stream", 
+        audioButtonText: "Start Audio Stream", 
+        screenShareButtonText: "Start Screen Share",
+        audioContext: null, // Web Audio API AudioContext
+        audioSource: null, // Web Audio API AudioBufferSourceNode
+        textOutput: "",        // 显示接收到的消息
+        messageInput: "",      // 用户输入的消息
+        videoStreams: [],
+        screenShareStream: null, // 存储屏幕共享流
+        videoStreamStatus: false,
+      }
+    },
+    created() {
+      this.socket = io('http://10.32.98.215:7000');
+      
+      this.socket.on('connect', async () => {
       console.log('Connected to server');
 
       try {

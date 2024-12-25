@@ -418,13 +418,13 @@ class ConferenceClient:
         if not self.conference_id:
             print("Warning", "You are not in a conference.")
             return
-        message = f"QUIT {self.conference_id}"
-        try:
-            data = message.encode()
-            self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
-            text_output = f"Sent: {message}\n"
-        except Exception as e:
-            print("Error", f"Error sending message: {e}")
+        # message = f"QUIT {self.conference_id}"
+        # try:
+        #     data = message.encode()
+        #     self.Socket.sendto(data,(config.SERVER_IP,config.MAIN_SERVER_PORT))
+        #     text_output = f"Sent: {message}\n"
+        # except Exception as e:
+        #     print("Error", f"Error sending message: {e}")
         self.conference_id = None
         self.conference_port = None
         self.join_success.clear()
@@ -464,20 +464,20 @@ class ConferenceClient:
         cv2.destroyAllWindows()
         
     def send_static_img(self):
-        # while not self.video_running:
-        #     img = cv2.imread(self.image_path)
-        #     img = cv2.resize(img, (680, 480))
-        #     _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-        #     video_data = base64.b64encode(buffer).decode('utf-8')
+        while not self.video_running:
+            img = cv2.imread(self.image_path)
+            img = cv2.resize(img, (680, 480))
+            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            video_data = base64.b64encode(buffer).decode('utf-8')
             
-        #     if not self.sio.connected:
-        #             print("Waiting for reconnection...")
-        #             continue
+            if not self.sio.connected:
+                    print("Waiting for reconnection...")
+                    continue
             
-            # self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
-        # self.cap.release()
-        # cv2.destroyAllWindows()
-        pass
+            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+        self.cap.release()
+        cv2.destroyAllWindows()
+
 
     def receive_video_stream(self, video_data,client_address):
         """
