@@ -25,7 +25,7 @@ class MainServer:
         self.main_server = None
 
         self.conference_conns = None
-        self.conference_servers = set()
+        self.conference_servers = {}
         self.clients = []
         self.threads = {}
         # build socket
@@ -118,7 +118,8 @@ class MainServer:
         @self.sio.on('join_conference')
         async def handle_join_conference(sid, data):
             conference_id = data.get('conference_id')
-            self.conference_servers.add(conference_id)
+            if conference_id not in self.conference_servers:
+                self.conference_servers.append(conference_id)
             if conference_id not in self.conference_servers:
                 await self.sio.emit('error', {'message': f'Conference {conference_id} not found.'}, to=sid)
                 return

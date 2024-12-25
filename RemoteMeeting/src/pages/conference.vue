@@ -78,7 +78,7 @@
         socket: null,
         store: useMainStore(),
         conferenceId: "",  
-        isHost: this.store.text === 1,
+        isHost: true,
         videoButtonText: "Start Video Stream", 
         audioButtonText: "Start Audio Stream", 
         screenShareButtonText: "Start Screen Share",
@@ -92,11 +92,11 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.98.215:7000');
+      this.socket = io('http://10.32.25.161:7000');
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
-
+        this.isHost = this.store.text === 1;
         try {
             // 调用 Flask API 获取房间号
             const response = await axios.get('http://127.0.0.1:7777/get_room');
