@@ -363,10 +363,6 @@ class ConferenceClient:
         if not self.conference_id:
             conference_id = ''.join(random.choices('0123456789', k=6))
             if conference_id and conference_id.isdigit():
-                host_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-                host_thread.start()
-                self.threads['host'] = host_thread
-                text_output = f"Conference id {conference_id} Created."
                 self.conference_id = conference_id
                 self.host = True
                 message = f"CREAT{conference_id}"
@@ -410,8 +406,6 @@ class ConferenceClient:
             self.sio.connect(f"{IP}?room={room}")
         except Exception as e:
             print("Error", f"Error sending message: {e}")
-        guest_thread = threading.Thread(target=self.receive_text_message, daemon=True)
-        guest_thread.start()
         return jsonify({
                 "status": "success",
                 "text_output": text_output,

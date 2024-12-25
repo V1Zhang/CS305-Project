@@ -25,7 +25,7 @@ class MainServer:
         self.main_server = None
 
         self.conference_conns = None
-        self.conference_servers = {}
+        self.conference_servers = set()
         self.clients = []
         self.threads = {}
         # build socket
@@ -118,6 +118,7 @@ class MainServer:
         @self.sio.on('join_conference')
         async def handle_join_conference(sid, data):
             conference_id = data.get('conference_id')
+            self.conference_servers.add(conference_id)
             if conference_id not in self.conference_servers:
                 await self.sio.emit('error', {'message': f'Conference {conference_id} not found.'}, to=sid)
                 return
@@ -138,14 +139,16 @@ class MainServer:
         @self.sio.on('text_message')
         def handle_text_message(sid, data):
             message = data.get('message')
+            message = message.decode('utf-8')
             print(message)
             room = data.get('room')
+            user = data.get('sender_id')
             # if room not in self.conference_servers:
             #     print('error')
             #     self.sio.emit('error', {'message': f'Conference {room} not found.'}, to=sid)
             #     return
 
-            formatted_message = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {sid}: {message}"
+            formatted_message = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {user}: {message}"
             self.sio.emit('text_message', {'message': formatted_message}, room=room)
             print(f"Broadcasted message: {formatted_message}")
         
