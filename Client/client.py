@@ -634,6 +634,7 @@ class ConferenceClient:
             
             if self.mode == 1:
                 encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+                # encoded_audio = audio_data.decode('utf-8')
                 if not self.sio.connected:
                     print("Waiting for reconnection...")
                     continue
@@ -680,7 +681,7 @@ class ConferenceClient:
         
     def process_screen_share(self):  
         # print(self.screen_data)
-        if self.screen_data:
+        if self.screen_data: 
             
             frame_data = base64.b64decode(self.screen_data['frame'])
             base64_frame = io.BytesIO(frame_data).getvalue()

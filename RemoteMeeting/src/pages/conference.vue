@@ -215,45 +215,15 @@
             bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
           }
 
-          // Manage audio playback by batching audio frames
-          if (!this.audioQueue) {
-            this.audioQueue = [];
-          }
+          // Play the audio
+          const source = this.audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioContext.destination);
+          source.start(0);
 
-          // Store the decoded audio buffer in the queue
-          this.audioQueue.push(audioBuffer);
-
-          // Play audio in batches
-          if (!this.isPlaying && this.audioQueue.length > 0) {
-            this.isPlaying = true;
-            this.playBufferedAudio();
-          }
+          // Save for cleanup (if needed)
+          this.audioSource = source;
         },
-
-playBufferedAudio() {
-  if (this.audioQueue.length === 0) {
-    this.isPlaying = false;
-    return;
-  }
-
-  const audioBuffer = this.audioQueue.shift(); // Get the next audio buffer from the queue
-
-  // Create and play the audio source
-  const source = this.audioContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(this.audioContext.destination);
-  source.onended = () => {
-    // Once the current buffer has finished playing, check if there are more
-    if (this.audioQueue.length > 0) {
-      this.playBufferedAudio();
-    } else {
-      this.isPlaying = false;
-    }
-  };
-
-  // Start playback
-  source.start(0);
-},
 
 
     handleIncomingScreenShare(data) {
