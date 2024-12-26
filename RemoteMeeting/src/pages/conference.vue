@@ -73,6 +73,8 @@
     },
     data() {
       return {        
+        API_URL: 'http://127.0.0.1:7777',
+        IP_URL: 'http://10.32.25.161:7000',
         socket: null,
         store: useMainStore(),
         conferenceId: "",  
@@ -90,26 +92,26 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.68.67:7000');
+      this.socket = io(this.IP_URL);
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
         this.isHost = this.store.text === 1;
         try {
-            // 调用 Flask API 获取房间号
-            const response = await axios.get('http://127.0.0.1:7777/get_room');
-            const roomId = response.data.room_id;; // 提取房间号
-            this.conferenceId = roomId;
-            // 使用房间号加入房间
-            this.socket.emit('join_room', { room: roomId });           
+          // 调用 Flask API 获取房间号
+          const response = await axios.get(this.API_URL + '/get_room');
+          const roomId = response.data.room_id;; // 提取房间号
+          this.conferenceId = roomId;
+          // 使用房间号加入房间
+          this.socket.emit('join_room', { room: roomId });           
             
-            console.log(`Joined room: ${roomId}`);
-          } catch (error) {
-              console.error('Error fetching room ID:', error);
-          }
+          console.log(`Joined room: ${roomId}`);
+        } catch (error) {
+          console.error('Error fetching room ID:', error);
+        }
 
-      this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
-    });
+        this.videoStreamUrl = this.API_URL + 'get_video';
+      });
 
     this.socket.on('disconnect', () => {
       console.log('Disconnected to server');
@@ -234,11 +236,11 @@
     },
 
 
-    async quitConference() {
-      try {
-        const response = await axios.post('http://127.0.0.1:7777/quit_conference', {
-          isHost: this.isHost, // 示例数据
-        });
+        async quitConference() {
+            try {
+                const response = await axios.post(this.API_URL + '/quit_conference', {
+                  isHost: this.isHost, // 示例数据
+                });
 
         if (response.status === 200) {
           console.log("Conference quited: ", response.data);
@@ -253,34 +255,34 @@
     },
 
 
-    async toggleVideoStream() {
-      try {
-        const response = await axios.post('http://127.0.0.1:7777/toggle_video_stream', {
-          action: this.videoStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
-        });
+        async toggleVideoStream() {
+            try {
+                const response = await axios.post(this.API_URL + '/toggle_video_stream', {
+                  action: this.videoStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
+                });
 
-        if (response.data.status === 'success') {
-          this.videoStreamStatus = !this.videoStreamStatus;
-          this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
-          if (this.videoStreamStatus) {
-            // 如果视频流启动，设定视频流的地址
-            this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
-          } else {
-            // console.error('Error toggling video stream:', response.data.message);
-          }
-        } else {
-          console.error('Error toggling video stream:', response.data.message);
-        }
-      } catch (error) {
-        console.error("Error toggling video stream:", error);
-      }
-    },
+                if (response.data.status === 'success') {
+                  this.videoStreamStatus = !this.videoStreamStatus;
+                  this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
+                  if (this.videoStreamStatus) {
+                      // 如果视频流启动，设定视频流的地址
+                      this.videoStreamUrl = this.API_URL + '/get_video';
+                  }else {
+                    // console.error('Error toggling video stream:', response.data.message);
+                  }
+                } else {
+                console.error('Error toggling video stream:', response.data.message);
+                }
+            } catch (error) {
+                console.error("Error toggling video stream:", error);
+            }
+        },
 
-    async toggleAudioStream() {
-      try {
-        const response = await axios.post('http://127.0.0.1:7777/toggle_audio_stream', {
-          action: this.AudioStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
-        });
+        async toggleAudioStream() {
+            try {
+                const response = await axios.post(this.API_URL + '/toggle_audio_stream', {
+                action: this.AudioStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
+                });
 
         if (response.data.status === 'success') {
           this.audioButtonText = "Stop Audio Stream"
@@ -294,11 +296,11 @@
       }
     },
 
-    async toggleScreenShare() {
-      try {
-        const response = await axios.post('http://127.0.0.1:7777/toggle_screen_share', {
-          action: this.ScreenShareStatus ? "stop" : "start"
-        });
+        async toggleScreenShare() {
+            try {
+                const response = await axios.post(this.API_URL + '/toggle_screen_share', {
+                action: this.ScreenShareStatus ? "stop" : "start"  
+                });
 
         if (response.data.status === 'success') {
           this.ScreenShareStatus = !this.ScreenShareStatus;
@@ -328,11 +330,11 @@
         return;  // 不发送空消息
       }
 
-      try {
-        // 假设向后端发送消息的接口是 `send_message`
-        const response = await axios.post('http://127.0.0.1:7777/send_message', {
-          message: this.messageInput,
-        });
+          try {
+            // 假设向后端发送消息的接口是 `send_message`
+            const response = await axios.post(this.API_URL + '/send_message', {
+              message: this.messageInput,
+            });
 
             if (response.data.status === 'success') {
               // this.textOutput += `You: ${this.messageInput}\n`;  // 添加到输出区域

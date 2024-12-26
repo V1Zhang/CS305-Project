@@ -41,7 +41,8 @@ class MainServer:
         # SocketIO server
         # create a Socket.IO servers
         
-        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://127.0.0.1:7000","https://admin.socket.io"],
+        self.sio = socketio.Server(async_mode='eventlet',cors_allowed_origins=["http://localhost:5173","http://localhost:5174","http://localhost:5175",
+                                                                               "http://127.0.0.1:7000","https://admin.socket.io"],
                                    ping_interval=10, ping_timeout=20 ,
 
                                    max_http_buffer_size=10000000,
@@ -116,9 +117,9 @@ class MainServer:
                 print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if cnt <= 2:
+                if cnt <= 0:
                     self.room_manager[room] = 0
-                elif cnt > 2:
+                elif cnt > 0:
                     self.room_manager[room] = 1
                     
                 self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)

@@ -55,6 +55,8 @@ export default {
   },
   data() {
     return {
+      API_URL: 'http://127.0.0.1:7777',
+      IP_URL: 'http://10.32.25.161:7000',
       socket: null,
       index: 0,
       selectedAction: null,
@@ -74,7 +76,7 @@ export default {
     }
   },
   created() {
-    this.socket = io('http://10.32.68.67:7000');
+    this.socket = io(this.IP_URL);
     this.socket.on('connect', () => {
       console.log('Connected to server');
       this.socket.emit('get_available_conferences');
@@ -98,7 +100,7 @@ export default {
       if (action.id === 1) {  //  "Create Meeting"
       try {
             // 发送 POST 请求到后端的 create_conference 方法
-            const response = await axios.post('http://127.0.0.1:7777/create_conference', {
+            const response = await axios.post(this.API_URL + '/create_conference', {
             // 如果需要传递参数，可以在这里添加
             userId: "user123", // 示例数据
             });
@@ -139,7 +141,7 @@ export default {
       }
 
       try {
-        const response = await axios.post('http://127.0.0.1:7777/join_conference', {
+        const response = await axios.post(this.API_URL + '/join_conference', {
           userId: "user123", // 示例数据
           conferenceId: this.conferenceId // 用户输入的会议ID
         });
