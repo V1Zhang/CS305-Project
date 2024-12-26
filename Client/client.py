@@ -68,7 +68,11 @@ class ConferenceClient:
         self.audio_thread = None
         self.audio_running = False
         self.audio_thread_receive=None
-        self.audio_queue = None
+        self.audio_buffer = queue.Queue()
+        self.max_queue_size= 40 
+
+        self.t_audio = threading.Thread(target=self._playback_audio_loop, daemon=True)
+        self.t_audio.start()
         
         # message
         self.message_thread = None 
@@ -267,8 +271,8 @@ class ConferenceClient:
                     }), 200
             else:
                 self.video_running = False
-                self.video_thread = threading.Thread(target=self.send_static_img, daemon=True)
-                self.video_thread.start()
+                # self.video_thread = threading.Thread(target=self.send_static_img, daemon=True)
+                # self.video_thread.start()
                 return jsonify({
                     "status": "success",
                     "message": f"video start"
@@ -376,12 +380,16 @@ class ConferenceClient:
             print(f"Disconnected from server. Reason: {reason}")
 
 
-        # @self.sio.on('audio_stream')
-        # def handle_audio_stream(data):
-        #     """Handle incoming audio stream.""" 
-        #     audio_data = base64.b64decode(data)
-        #     # self.audio_queue.append(audio_data)
-        #     self.audio_stream_write.write(audio_data)
+        @self.sio.on('audio_stream')
+        def handle_audio_stream(data):
+            """Handle incoming audio stream.""" 
+            # print('received audio stream')
+            audio_data = base64.b64decode(data['audio'])
+            # self.audio_queue.append(audio_data')
+            # self.audio_stream_write.write(audio_data)
+            self.handle_audio_data(audio_data)
+
+                    
             
         @self.sio.on('mode_change')
         def handle_mode_change(data):
@@ -396,6 +404,8 @@ class ConferenceClient:
             # in p2p mode, acquire the client list
             if self.mode == 0 and not self.p2pclient.is_running : # TODO: the server will send mode=0
                 self.sio.emit('get_clients', {'room': self.conference_id})
+            
+            return "MODE",123
         
         @self.sio.on('clients_list')
         def handle_clients_list(data):
@@ -424,16 +434,33 @@ class ConferenceClient:
             
 
 
-    
+    def handle_audio_data(self, data):
+        if self.audio_buffer.qsize() >= self.max_queue_size:
+            try:
+                self.audio_buffer.get_nowait()
+            except queue.Empty:
+                pass
+        self.audio_buffer.put(data)
+        # print(self.audio_buffer.qsize())
 
-    def process_audio_stream(self):
-        """后台线程处理音频数据。"""
-        while self.audio_running:
-            if self.audio_queue:
-                print('received audio stream')
-                audio_data = self.audio_queue.pop(0)
-                self.audio_stream_write.write(audio_data)
-     
+    def _playback_audio_loop(self):
+        while True:
+            print(self.audio_buffer.qsize() )
+            try:
+                if self.audio_buffer.qsize() > self.max_queue_size:
+                    for _ in range(self.max_queue_size / 2):
+                        try:
+                            self.audio_buffer.get_nowait()
+                        except queue.Empty:
+                            break
+                raw_data = self.audio_buffer.get(timeout=1)
+                self.audio_stream_write.write(raw_data)
+                print(f"Audio buffer size: {self.audio_buffer.qsize()}")
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"Audio playback error: {e}")
+                break
             
     def create_conference(self):
         if not self.conference_id:
@@ -566,20 +593,20 @@ class ConferenceClient:
         self.cap.release()
         cv2.destroyAllWindows()
         
-    def send_static_img(self):
-        while not self.video_running:
-            img = cv2.imread(self.image_path)
-            img = cv2.resize(img, (680, 480))
-            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            video_data = base64.b64encode(buffer).decode('utf-8')
+    # def send_static_img(self):
+    #     while not self.video_running:
+    #         img = cv2.imread(self.image_path)
+    #         img = cv2.resize(img, (680, 480))
+    #         _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+    #         video_data = base64.b64encode(buffer).decode('utf-8')
             
-            if not self.sio.connected:
-                    print("Waiting for reconnection...")
-                    continue
+    #         if not self.sio.connected:
+    #                 print("Waiting for reconnection...")
+    #                 continue
             
-            self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
-        self.cap.release()
-        cv2.destroyAllWindows()
+    #         self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+    #     self.cap.release()
+    #     cv2.destroyAllWindows()
 
 
     def receive_video_stream(self, video_data,client_address):

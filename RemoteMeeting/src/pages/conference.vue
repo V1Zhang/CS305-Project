@@ -28,8 +28,8 @@
               <div class="video-header">
                 <span>{{ stream.clientAddress }}</span>
               </div>
-              <img v-if="stream.videoFrame" :src="'data:image/jpeg;base64,' + stream.videoFrame" />
-              <p v-else>No Video Stream</p>
+              <img :src="videoStreamStatus ? 'data:image/jpeg;base64,' + stream.videoFrame : fallbackUrl" alt="Video Stream"/>
+              <!-- <img :src="'data:image/jpeg;base64,' + stream.videoFrame" /> -->
             </div>
           </div>
           <!-- 屏幕共享区 -->
@@ -62,6 +62,7 @@
 </template>
   
   <script>
+  import img from '../assets/img/off.jpg'
   import {useMainStore} from '../store/data';
   import vHeader from '../components/header.vue';
   import axios from 'axios';
@@ -77,6 +78,7 @@
         IP_URL: 'http://10.32.98.215:7000',
         socket: null,
         store: useMainStore(),
+        fallbackUrl: img,
         conferenceId: "",  
         isHost: true,
         videoButtonText: "Start Video Stream", 
@@ -143,7 +145,7 @@
     },
 
 
-    mounted() {
+  mounted() {
     // 在页面加载后自动调用 toggleVideoStream
     // this.toggleVideoStream();
     },
@@ -189,41 +191,41 @@
         },
 
 
-        handleIncomingAudioStream(data) {
-          const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
-          if (!encodedAudio) {
-            console.error("No audio buffer received.");
-            return;
-          }
+        // handleIncomingAudioStream(data) {
+        //   const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
+        //   if (!encodedAudio) {
+        //     console.error("No audio buffer received.");
+        //     return;
+        //   }
 
-          // Decode Base64 audio data into raw PCM
-          const binaryString = atob(encodedAudio);
-          const len = binaryString.length;
-          const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
-          for (let i = 0; i < len; i += 2) {
-            pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
-          }
+        //   // Decode Base64 audio data into raw PCM
+        //   const binaryString = atob(encodedAudio);
+        //   const len = binaryString.length;
+        //   const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
+        //   for (let i = 0; i < len; i += 2) {
+        //     pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
+        //   }
 
-          // Create an AudioBuffer from PCM data
-          const audioBuffer = this.audioContext.createBuffer(
-            1, // Mono
-            pcmArray.length, // Number of samples
-            44100 // Sample rate (must match sender)
-          );
-          const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
-          for (let i = 0; i < pcmArray.length; i++) {
-            bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
-          }
+        //   // Create an AudioBuffer from PCM data
+        //   const audioBuffer = this.audioContext.createBuffer(
+        //     1, // Mono
+        //     pcmArray.length, // Number of samples
+        //     44100 // Sample rate (must match sender)
+        //   );
+        //   const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
+        //   for (let i = 0; i < pcmArray.length; i++) {
+        //     bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
+        //   }
 
-          // Play the audio
-          const source = this.audioContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(this.audioContext.destination);
-          source.start(0);
+        //   // Play the audio
+        //   const source = this.audioContext.createBufferSource();
+        //   source.buffer = audioBuffer;
+        //   source.connect(this.audioContext.destination);
+        //   source.start(0);
 
-          // Save for cleanup (if needed)
-          this.audioSource = source;
-        },
+        //   // Save for cleanup (if needed)
+        //   this.audioSource = source;
+        // },
 
 
     handleIncomingScreenShare(data) {
@@ -265,9 +267,11 @@
                   this.videoStreamStatus = !this.videoStreamStatus;
                   this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
                   if (this.videoStreamStatus) {
-                      // 如果视频流启动，设定视频流的地址
-                      this.videoStreamUrl = this.API_URL + '/get_video';
+                    // 如果视频流启动，设定视频流的地址
+                    this.videoStreamUrl = this.API_URL + '/get_video';
                   }else {
+                    this.stream.videoFrame = null;  // 清空视频帧
+                    this.videoStreamUrl = this.fallbackUrl;
                     // console.error('Error toggling video stream:', response.data.message);
                   }
                 } else {
