@@ -74,7 +74,7 @@
     data() {
       return {        
         API_URL: 'http://127.0.0.1:7777',
-        IP_URL: 'http://10.32.68.67:7000',
+        IP_URL: 'http://10.32.98.215:7000',
         socket: null,
         store: useMainStore(),
         conferenceId: "",  
@@ -215,15 +215,45 @@
             bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
           }
 
-          // Play the audio
-          const source = this.audioContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(this.audioContext.destination);
-          source.start(0);
+          // Manage audio playback by batching audio frames
+          if (!this.audioQueue) {
+            this.audioQueue = [];
+          }
 
-          // Save for cleanup (if needed)
-          this.audioSource = source;
+          // Store the decoded audio buffer in the queue
+          this.audioQueue.push(audioBuffer);
+
+          // Play audio in batches
+          if (!this.isPlaying && this.audioQueue.length > 0) {
+            this.isPlaying = true;
+            this.playBufferedAudio();
+          }
         },
+
+playBufferedAudio() {
+  if (this.audioQueue.length === 0) {
+    this.isPlaying = false;
+    return;
+  }
+
+  const audioBuffer = this.audioQueue.shift(); // Get the next audio buffer from the queue
+
+  // Create and play the audio source
+  const source = this.audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(this.audioContext.destination);
+  source.onended = () => {
+    // Once the current buffer has finished playing, check if there are more
+    if (this.audioQueue.length > 0) {
+      this.playBufferedAudio();
+    } else {
+      this.isPlaying = false;
+    }
+  };
+
+  // Start playback
+  source.start(0);
+},
 
 
     handleIncomingScreenShare(data) {
