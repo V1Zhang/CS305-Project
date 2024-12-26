@@ -4,7 +4,7 @@ HELP = 'Create         : create an conference\n' \
        'Cancel         : cancel your on-going conference (only the manager)\n\n'
 
 
-SERVER_IP = '127.0.0.1'
+SERVER_IP = '10.32.25.161'
 MAIN_SERVER_PORT = 8000
 
 TIMEOUT_SERVER = 5

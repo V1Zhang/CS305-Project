@@ -2,8 +2,8 @@
   <div>
     <v-header />
     <div class="conference-header">
-        <span>Conference ID: {{ conferenceId }}</span>
-      </div>
+      <span>Conference ID: {{ conferenceId }}</span>
+    </div>
     <div class="container">
       <!-- 左侧按钮和视频 -->
       <div id="video-button-container">
@@ -35,7 +35,10 @@
           <!-- 屏幕共享区 -->
           <div class="screen-share-container">
             <div class="video-header">Screen Share</div>
+
             <img id="player" style="width:904px;height:576px"/>
+
+
           </div>
         </div>
       </div>
@@ -46,13 +49,8 @@
           <textarea v-model="textOutput" readonly class="output-textarea"></textarea>
         </div>
         <div class="message-input">
-          <input
-            type="text"
-            v-model="messageInput"
-            @keyup.enter="sendMessage"
-            placeholder="Type a message..."
-            class="input-textarea"
-          />
+          <input type="text" v-model="messageInput" @keyup.enter="sendMessage" placeholder="Type a message..."
+            class="input-textarea" />
           <button @click="sendMessage" class="action-button warning">
             <span class="action-icon">✉️</span> Send Message
           </button>
@@ -75,6 +73,8 @@
     },
     data() {
       return {        
+        API_URL: 'http://127.0.0.1:7777',
+        IP_URL: 'http://10.32.25.161:7000',
         socket: null,
         store: useMainStore(),
         conferenceId: "",  
@@ -92,14 +92,14 @@
       }
     },
     created() {
-      this.socket = io('http://10.32.98.215:7000');
+      this.socket = io(this.IP_URL);
       
       this.socket.on('connect', async () => {
       console.log('Connected to server');
         this.isHost = this.store.text === 1;
         try {
           // 调用 Flask API 获取房间号
-          const response = await axios.get('http://127.0.0.1:7777/get_room');
+          const response = await axios.get(this.API_URL + '/get_room');
           const roomId = response.data.room_id;; // 提取房间号
           this.conferenceId = roomId;
           // 使用房间号加入房间
@@ -110,7 +110,7 @@
           console.error('Error fetching room ID:', error);
         }
 
-        this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
+        this.videoStreamUrl = this.API_URL + 'get_video';
       });
 
       this.socket.on('disconnect', () => {
@@ -121,12 +121,14 @@
         this.handleIncomingMessage(data);
       });
 
-      this.socket.on('video_frame', (data) => {
-        // console.log('Video stream')
-        this.handleIncomingVideoStream(data);
-      });
+    this.socket.on('video_frame', (data) => {
+      // console.log('Video stream')
+      this.handleIncomingVideoStream(data);
+    });
 
-      this.socket.on('audio-stream', (data) => {
+
+      this.socket.on('audio_stream', (data) => {
+        console.log('audio stream')
         this.handleIncomingAudioStream(data);
       });
 
@@ -134,16 +136,16 @@
         this.handleIncomingScreenShare(data); 
       });
 
-      this.socket.on('cancel_conference', (data) => {
-        this.$router.push('/mode');
+      this.socket.on('room_cancelled', (data) => {
+        this.$router.push('/mode')
       });
 
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
     },
+
+
     mounted() {
     // 在页面加载后自动调用 toggleVideoStream
-    this.toggleVideoStream();
+    // this.toggleVideoStream();
     },
 
     beforeDestroy() {
@@ -185,6 +187,44 @@
           }
         },
 
+
+        handleIncomingAudioStream(data) {
+          const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
+          if (!encodedAudio) {
+            console.error("No audio buffer received.");
+            return;
+          }
+
+          // Decode Base64 audio data into raw PCM
+          const binaryString = atob(encodedAudio);
+          const len = binaryString.length;
+          const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
+          for (let i = 0; i < len; i += 2) {
+            pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
+          }
+
+          // Create an AudioBuffer from PCM data
+          const audioBuffer = this.audioContext.createBuffer(
+            1, // Mono
+            pcmArray.length, // Number of samples
+            44100 // Sample rate (must match sender)
+          );
+          const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
+          for (let i = 0; i < pcmArray.length; i++) {
+            bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
+          }
+
+          // Play the audio
+          const source = this.audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioContext.destination);
+          source.start(0);
+
+          // Save for cleanup (if needed)
+          this.audioSource = source;
+        },
+
+
         handleIncomingScreenShare(data) {
           const { frame: videoFrame, sender_id: clientAddress } = data;
           const existingStream = this.videoStreams.find(
@@ -197,7 +237,7 @@
 
         async quitConference() {
             try {
-                const response = await axios.post('http://127.0.0.1:7777/quit_conference', {
+                const response = await axios.post(this.API_URL + '/quit_conference', {
                   isHost: this.isHost, // 示例数据
                 });
 
@@ -216,7 +256,7 @@
 
         async toggleVideoStream() {
             try {
-                const response = await axios.post('http://127.0.0.1:7777/toggle_video_stream', {
+                const response = await axios.post(this.API_URL + '/toggle_video_stream', {
                   action: this.videoStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
                 });
 
@@ -225,7 +265,7 @@
                   this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
                   if (this.videoStreamStatus) {
                       // 如果视频流启动，设定视频流的地址
-                      this.videoStreamUrl = 'http://127.0.0.1:7777/get_video';
+                      this.videoStreamUrl = this.API_URL + '/get_video';
                   }else {
                     // console.error('Error toggling video stream:', response.data.message);
                   }
@@ -239,7 +279,7 @@
 
         async toggleAudioStream() {
             try {
-                const response = await axios.post('http://127.0.0.1:7777/toggle_audio_stream', {
+                const response = await axios.post(this.API_URL + '/toggle_audio_stream', {
                 action: this.AudioStreamStatus ? "stop" : "start"  // 根据当前状态发送启动或停止请求
                 });
 
@@ -257,7 +297,7 @@
 
         async toggleScreenShare() {
             try {
-                const response = await axios.post('http://127.0.0.1:7777/toggle_screen_share', {
+                const response = await axios.post(this.API_URL + '/toggle_screen_share', {
                 action: this.ScreenShareStatus ? "stop" : "start"  
                 });
 
@@ -291,7 +331,7 @@
 
           try {
             // 假设向后端发送消息的接口是 `send_message`
-            const response = await axios.post('http://127.0.0.1:7777/send_message', {
+            const response = await axios.post(this.API_URL + '/send_message', {
               message: this.messageInput,
             });
 
@@ -305,22 +345,24 @@
             console.error("Error sending message:", error);
           }
         },
-
-
-
     }
   }
-  </script>
-  
-  <style scoped>
-    
-  .container {
-  display: flex;  /* 使用 Flexbox 让子元素并排显示 */
-  justify-content: space-between;  /* 在主轴方向上分配空间 */
-  align-items: flex-start;  /* 垂直方向对齐 */
+
+
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  /* 使用 Flexbox 让子元素并排显示 */
+  justify-content: space-between;
+  /* 在主轴方向上分配空间 */
+  align-items: flex-start;
+  /* 垂直方向对齐 */
   padding: 20px;
   margin-top: 0;
-  gap: 20px;  /* 为左右容器之间增加间距 */
+  gap: 20px;
+  /* 为左右容器之间增加间距 */
 }
 
 .conference-header {
@@ -331,7 +373,8 @@
   background-color: #f0f0f0;
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;  /* 给下方内容添加一些间距 */
+  margin-bottom: 20px;
+  /* 给下方内容添加一些间距 */
 }
 
 .conference-header span {
@@ -341,11 +384,13 @@
 
 #video-button-container {
   display: flex;
-  flex-direction: column;  /* 垂直排列按钮 */
+  flex-direction: column;
+  /* 垂直排列按钮 */
   justify-content: flex-start;
   align-items: center;
-  width: 70%; 
-  background-color: #f5f5f5;  /* 背景色 */
+  width: 70%;
+  background-color: #f5f5f5;
+  /* 背景色 */
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
@@ -353,8 +398,10 @@
 .buttons-container {
   display: flex;
   flex-direction: row;
-  gap: 20px;  /* 按钮之间的间距 */
-  margin-top: 20px;  /* 按钮容器顶部间距 */
+  gap: 20px;
+  /* 按钮之间的间距 */
+  margin-top: 20px;
+  /* 按钮容器顶部间距 */
 }
 
 .action-button {
@@ -386,8 +433,10 @@
 /* 视频显示区域 */
 .video-container {
   display: flex;
-  flex-direction: column;  /* 上下排列视频窗口和屏幕共享区域 */
-  gap: 10px;  /* 设置间距 */
+  flex-direction: column;
+  /* 上下排列视频窗口和屏幕共享区域 */
+  gap: 10px;
+  /* 设置间距 */
   margin-top: 20px;
 }
 
@@ -404,11 +453,13 @@
   padding: 10px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
 }
+
 .camera-container img {
   max-width: 25%;
   max-height: 25%;
   object-fit: contain;
 }
+
 .screen-share-container {
   background-color: #f0f0f0;
   border-radius: 8px;
@@ -417,7 +468,8 @@
 }
 
 .screen-share-container img {
-  width: 100%;  /* 自适应宽度 */
+  width: 100%;
+  /* 自适应宽度 */
   max-width: 704px;
   max-height: 576px;
   object-fit: contain;
@@ -428,7 +480,8 @@
 /* 聊天容器 */
 #chat-container {
   right: 0;
-  top: 20%;  /* 防止和底部重叠 */
+  top: 20%;
+  /* 防止和底部重叠 */
   width: 450px;
   background-color: #f9f9f9;
   border: 1px solid #ddd;
@@ -475,5 +528,4 @@
   font-family: Arial, sans-serif;
   font-size: 14px;
 }
-
 </style>
