@@ -537,7 +537,15 @@ class ConferenceClient:
             print("Warning", "You are not in a conference.") 
             return
         
-        self.sio.emit('leave_room', { 'room': self.conference_id })
+        while True:
+            try:
+                response = self.sio.call('leave_room', { 'room': self.conference_id }, timeout = 3)
+                print(response)
+                break
+            except TimeoutError:
+                print("Leave signal time out, try again!")
+                continue
+        
         self.conference_id = None
         # self.conference_port = None
         # self.join_success.clear()
