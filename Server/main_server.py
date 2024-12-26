@@ -128,7 +128,7 @@ class MainServer:
 
         @self.sio.event
         def disconnect(sid):
-            rooms = self.sio.rooms(sid=sid)
+            rooms = list(self.sio.rooms(sid=sid))
             for room in rooms:
                 self.sio.leave_room(sid=sid,room=room)
             print(f"Client {sid} disconnected.")

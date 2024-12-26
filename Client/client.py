@@ -418,7 +418,7 @@ class ConferenceClient:
             self.conference_id = None
             # Close p2p connection
             if self.p2pclient.is_running:
-                self.p2pclient.close()
+                # self.p2pclient.close()
                 self.p2pclient.clients_info = []
             self.sio.emit('room_cancelled_ack', { 'room': data['room'] })
             
