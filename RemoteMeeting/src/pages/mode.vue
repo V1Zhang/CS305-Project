@@ -320,6 +320,20 @@ video {
   z-index: 1000;
 }
 
+.modal-content button {
+  width: 100%;
+  padding: 12px 20px;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);  /* 按钮的阴影 */
+  transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  margin-bottom: 10px; 
+}
+
 .modal-content {
   background-color: white;
   padding: 20px;
