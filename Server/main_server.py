@@ -117,18 +117,29 @@ class MainServer:
                 print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if cnt <= 0:
+                if cnt <= 2:
                     self.room_manager[room] = 0
-                elif cnt > 0:
+                elif cnt > 2:
                     self.room_manager[room] = 1
+                
+                for client_sid, _ in room_clients:
+                    if self.sio.get_session(client_sid,namespace='/'):
+                        while True:
+                    # self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
+                            try:
+                                response = self.sio.call('mode_change',{'mode': self.room_manager[room], 'num_clients': cnt}, to = client_sid, timeout=3)
+                                print(response)
+                                break
+                            except TimeoutError:
+                                print("Mode change signal time out, try again!")
+                                continue
                     
-                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
             else:
                 print('error')
 
         @self.sio.event
         def disconnect(sid):
-            rooms = self.sio.rooms(sid=sid)
+            rooms = list(self.sio.rooms(sid=sid))
             for room in rooms:
                 self.sio.leave_room(sid=sid,room=room)
             print(f"Client {sid} disconnected.")
@@ -173,6 +184,7 @@ class MainServer:
                 self.sio.emit('available_conferences', {"status": "success", "conferences": conferences })
             except Exception as e:
                 self.sio.emit('available_conferences', {"status": "error", "message": str(e)})
+                
 
 
         @self.sio.on('text_message')
@@ -244,9 +256,9 @@ class MainServer:
                     cnt += 1
             print(f"Number of clients in room {room}: {cnt}")
             # Change the mode of the room according to the number of clients in the room
-            if cnt <= 0:
+            if cnt <= 2:
                 self.room_manager[room] = 0
-            elif cnt > 0:
+            elif cnt > 2:
                 self.room_manager[room] = 1
             
             self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':cnt},room=room)
