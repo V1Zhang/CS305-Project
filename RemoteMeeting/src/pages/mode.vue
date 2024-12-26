@@ -56,7 +56,7 @@ export default {
   data() {
     return {
       API_URL: 'http://127.0.0.1:7777',
-      IP_URL: 'http://10.32.68.67:7000',
+      IP_URL: 'http://10.32.98.215:7000',
       socket: null,
       index: 0,
       selectedAction: null,
@@ -309,7 +309,7 @@ video {
 
 .modal {
   position: fixed;
-  top: 0;
+  top: -280px;
   left: 0;
   width: 100%;
   height: 100%;
@@ -318,6 +318,20 @@ video {
   justify-content: center;
   align-items: center;
   z-index: 1000;
+}
+
+.modal-content button {
+  width: 100%;
+  padding: 12px 20px;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);  /* 按钮的阴影 */
+  transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  margin-bottom: 10px; 
 }
 
 .modal-content {
