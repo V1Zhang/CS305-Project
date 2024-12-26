@@ -346,13 +346,22 @@ class ConferenceClient:
         def connect():
             print("Connected to server")
             print(self.sio.sid)
-            self.sio.emit('join_room', { 'room': self.conference_id,
+            
+            while True:
+                try:
+                    response = self.sio.call('join_room', { 'room': self.conference_id,
                                         'udpSocket':self.p2pclient.udpSocket.getsockname(),
                                         'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
                                         'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
                                         'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
-                                        }
-                          ) 
+                                        }, timeout = 3
+                          )
+                    print(response)
+                    break
+                except TimeoutError:
+                    print("Client join signal time out, try again!")
+                    continue
+            
             threading.Thread(target=send_heartbeat, daemon=True).start()  # 启动心跳线程
 
         def send_heartbeat():
@@ -451,13 +460,22 @@ class ConferenceClient:
                         self.sio.connect(IP)
                     else:
                         print("Create Conference Again!")
-                        self.sio.emit('join_room', { 'room': self.conference_id,
+                        
+                        while True:
+                            try:
+                                response = self.sio.call('join_room', { 'room': self.conference_id,
                                         'udpSocket':self.p2pclient.udpSocket.getsockname(),
                                         'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
                                         'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
                                         'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
-                                        }
+                                        }, timeout = 3
                             )
+                                print(response)
+                                break
+                            except TimeoutError:
+                                print("Client join signal time out, try again!")
+                                continue
+                        
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
@@ -489,13 +507,22 @@ class ConferenceClient:
             else:
                 print("Joined Conference Again!")
                 print(self.sio.sid)
-                self.sio.emit('join_room', { 'room': self.conference_id,
+                
+                while True:
+                    try:
+                        response = self.sio.call('join_room', { 'room': self.conference_id,
                                         'udpSocket':self.p2pclient.udpSocket.getsockname(),
                                         'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
                                         'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
                                         'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
-                                        }
+                                        }, timeout = 3
                             ) 
+                        print(response)
+                        break
+                    except TimeoutError:
+                        print("Client join signal time out, try again!")
+                        continue
+                        
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         return jsonify({

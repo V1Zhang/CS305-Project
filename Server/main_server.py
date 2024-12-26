@@ -135,7 +135,9 @@ class MainServer:
                                 continue
                     
             else:
-                print('error')
+                print('error join in room')
+        
+            return "JOIN", 123
 
         @self.sio.event
         def disconnect(sid):
