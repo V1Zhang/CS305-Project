@@ -51,8 +51,6 @@ class P2PClient:
         self.video_windows = {}
         self.last_frame_time = {}
         self.video_timeout = 5.0
-        
-        self.max_queue_size = 40
 
     def start(self):
         self.is_running = True
@@ -247,11 +245,6 @@ class P2PClient:
                 break
 
     def handle_audio_data(self, data):
-        if self.audio_buffer.qsize() >= self.max_queue_size:
-            try:
-                self.audio_buffer.get_nowait()
-            except queue.Empty:
-                pass
         self.audio_buffer.put(data)
 
     def handle_video_frame(self, addr, data):
@@ -293,12 +286,6 @@ class P2PClient:
     def _playback_audio_loop(self):
         while self.is_running:
             try:
-                if self.audio_buffer.qsize() > self.max_queue_size:
-                    for _ in range(self.max_queue_size / 2):
-                        try:
-                            self.audio_buffer.get_nowait()
-                        except queue.Empty:
-                            break
                 raw_data = self.audio_buffer.get(timeout=1)
                 self.audio_stream.write(raw_data)
                 print(f"Audio buffer size: {self.audio_buffer.qsize()}")

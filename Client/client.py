@@ -263,21 +263,16 @@ class ConferenceClient:
                     }), 500
             if not self.video_running:
                 self.video_running = True
-                self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
-                self.video_thread.start()
-                return jsonify({
-                    "status": "success",
-                    "message": f"video stop"
-                    }), 200
             else:
                 self.video_running = False
-                # self.video_thread = threading.Thread(target=self.send_static_img, daemon=True)
-                # self.video_thread.start()
-                return jsonify({
+           
+            self.video_thread = threading.Thread(target=self.send_video_stream, daemon=True)
+            self.video_thread.start()   
+            return jsonify({
                     "status": "success",
-                    "message": f"video start"
                     }), 200
-               
+            
+            
         @self.app.route('/toggle_audio_stream', methods=['POST'])
         def toggle_audio_stream():
             if not self.conference_id:
@@ -601,32 +596,41 @@ class ConferenceClient:
         self.sio.emit('text_message', {'message': data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
 
     def send_video_stream(self):
-        self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.video_running = True
+        if self.video_running:
+            self.cap = cv2.VideoCapture(0)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.video_running = True
 
-        while self.video_running:
-            _, img = self.cap.read()
-            img = cv2.flip(img, 1)
+            while self.video_running:
+                _, img = self.cap.read()
+                img = cv2.flip(img, 1)
 
-            _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-            # print(self.mode)
-            
-            if self.mode == 1:
+                _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+                # print(self.mode)
+                
+                if self.mode == 1:
+                    video_data = base64.b64encode(buffer).decode('utf-8')
+                    if not self.sio.connected:
+                            print("Waiting for reconnection...")
+                            continue
+                
+                    # Send video frame via Socket.IO
+                    self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
+                elif self.mode == 0:
+                    video_data = buffer.tobytes()
+                    self.p2pclient.forward_rtp_data(video_data,'video')
+            self.cap.release()
+            cv2.destroyAllWindows()
+        else:
+            while not self.video_running:       
+                img = cv2.imread(self.image_path)
+                img = cv2.resize(img, (680, 480))   
+                _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
                 video_data = base64.b64encode(buffer).decode('utf-8')
-                if not self.sio.connected:
-                        print("Waiting for reconnection...")
-                        continue
-            
-                # Send video frame via Socket.IO
                 self.sio.emit('video_frame', {'frame': video_data, 'sender_id': config.SELF_IP,"room": str(self.conference_id)})
-            elif self.mode == 0:
-                video_data = buffer.tobytes()
-                self.p2pclient.forward_rtp_data(video_data,'video')
-
-        self.cap.release()
-        cv2.destroyAllWindows()
+            cv2.destroyAllWindows()
+        
         
     # def send_static_img(self):
     #     while not self.video_running:

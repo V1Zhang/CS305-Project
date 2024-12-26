@@ -117,9 +117,9 @@ class MainServer:
                 print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if cnt <= 0:
+                if cnt <= 2:
                     self.room_manager[room] = 0
-                elif cnt > 0:
+                elif cnt > 2:
                     self.room_manager[room] = 1
                 
                 for client_sid, _ in room_clients:
@@ -264,9 +264,9 @@ class MainServer:
                     cnt += 1
             print(f"Number of clients in room {room}: {cnt}")
             # Change the mode of the room according to the number of clients in the room
-            if cnt <= 0:
+            if cnt <= 2:
                 self.room_manager[room] = 0
-            elif cnt > 0:
+            elif cnt > 2:
                 self.room_manager[room] = 1
             
             for client_sid, _ in room_clients:
