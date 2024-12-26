@@ -83,10 +83,10 @@ class P2PClient:
 
     def close(self):
         self.is_running = False
-        self.udpSocket.close()
-        self.audio_rtpSocket.close()
-        self.video_rtpSocket.close()
-        self.screen_rtpSocket.close()
+        # self.udpSocket.close()
+        # self.audio_rtpSocket.close()
+        # self.video_rtpSocket.close()
+        # self.screen_rtpSocket.close()
         for t in self.threads:
             t.join(timeout=1)
         cv2.destroyAllWindows()
