@@ -467,10 +467,19 @@ class ConferenceClient:
             text_output = f"Sent: {message}\n"
             self.conference_id=conference_id
             IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
-            # 加入对应房间
-            # IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
             print(IP)
-            self.sio.connect(IP)
+            if not self.sio.connected:
+                self.sio.connect(IP)
+            else:
+                print("Joined Conference Again!")
+                print(self.sio.sid)
+                self.sio.emit('join_room', { 'room': self.conference_id,
+                                        'udpSocket':self.p2pclient.udpSocket.getsockname(),
+                                        'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
+                                        'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
+                                        'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
+                                        }
+                            ) 
         except Exception as e:
             print("Error", f"Error sending message: {e}")
         return jsonify({
@@ -502,12 +511,11 @@ class ConferenceClient:
             print("Warning", "You are not in a conference.")
             return
         
-        self.emit('cancel_room',{ 'room': self.conference_id })
+        self.sio.emit('cancel_room',{ 'room': self.conference_id })
         self.conference_id = None
-        text_output = text_output + "Cancel the conference.\n"
         return jsonify({
                 "status": "success",
-                "text_output": text_output,
+                "text_output": 'text_output',
                 "conference_id": self.conference_id
             })
         

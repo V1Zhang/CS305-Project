@@ -117,9 +117,9 @@ class MainServer:
                 print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if cnt <= 0:
+                if cnt <= 2:
                     self.room_manager[room] = 0
-                elif cnt > 0:
+                elif cnt > 2:
                     self.room_manager[room] = 1
                     
                 self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
@@ -254,7 +254,7 @@ class MainServer:
         @self.sio.on('cancel_room')
         def handle_cancel_room(sid, data):
             room = data.get('room')
-            self.sio.emit('room_cancelled', room=room)
+            self.sio.emit('room_cancelled',data={'room': room}, room=room)
             print(f"Room {room} is closed.")
             
         @self.sio.on('room_cancelled_ack') # count the number of acks
