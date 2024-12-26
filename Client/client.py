@@ -365,7 +365,7 @@ class ConferenceClient:
 
         def send_heartbeat():
             while self.sio.connected:
-                print(self.mode)
+                # print(self.mode)
                 self.sio.emit('heartbeat', {'message': 'ping'})
                 time.sleep(10)  # 每 10 秒发送一次心跳
 
