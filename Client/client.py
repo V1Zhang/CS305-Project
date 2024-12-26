@@ -396,6 +396,8 @@ class ConferenceClient:
             # in p2p mode, acquire the client list
             if self.mode == 0 and not self.p2pclient.is_running : # TODO: the server will send mode=0
                 self.sio.emit('get_clients', {'room': self.conference_id})
+            
+            return "MODE",123
         
         @self.sio.on('clients_list')
         def handle_clients_list(data):

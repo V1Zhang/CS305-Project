@@ -121,8 +121,19 @@ class MainServer:
                     self.room_manager[room] = 0
                 elif cnt > 2:
                     self.room_manager[room] = 1
+                
+                for client_sid, _ in room_clients:
+                    if self.sio.get_session(client_sid,namespace='/'):
+                        while True:
+                    # self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
+                            try:
+                                response = self.sio.call('mode_change',{'mode': self.room_manager[room], 'num_clients': cnt}, to = client_sid, timeout=3)
+                                print(response)
+                                break
+                            except TimeoutError:
+                                print("Mode change signal time out, try again!")
+                                continue
                     
-                self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
             else:
                 print('error')
 
@@ -173,6 +184,7 @@ class MainServer:
                 self.sio.emit('available_conferences', {"status": "success", "conferences": conferences })
             except Exception as e:
                 self.sio.emit('available_conferences', {"status": "error", "message": str(e)})
+                
 
 
         @self.sio.on('text_message')
