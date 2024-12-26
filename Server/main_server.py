@@ -117,9 +117,9 @@ class MainServer:
                 print(f"Number of clients in room {room}: {cnt}")
                 
                 # Change the mode of the room according to the number of clients in the room
-                if cnt <= 2:
+                if cnt <= 0:
                     self.room_manager[room] = 0
-                elif cnt > 2:
+                elif cnt > 0:
                     self.room_manager[room] = 1
                 
                 for client_sid, _ in room_clients:
@@ -256,9 +256,9 @@ class MainServer:
                     cnt += 1
             print(f"Number of clients in room {room}: {cnt}")
             # Change the mode of the room according to the number of clients in the room
-            if cnt <= 2:
+            if cnt <= 0:
                 self.room_manager[room] = 0
-            elif cnt > 2:
+            elif cnt > 0:
                 self.room_manager[room] = 1
             
             self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':cnt},room=room)

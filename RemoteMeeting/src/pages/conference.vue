@@ -28,8 +28,8 @@
               <div class="video-header">
                 <span>{{ stream.clientAddress }}</span>
               </div>
-              <img v-if="stream.videoFrame" :src="'data:image/jpeg;base64,' + stream.videoFrame" />
-              <p v-else>No Video Stream</p>
+              <img :src="videoStreamStatus ? 'data:image/jpeg;base64,' + stream.videoFrame : fallbackUrl" alt="Video Stream"/>
+              <!-- <img :src="'data:image/jpeg;base64,' + stream.videoFrame" /> -->
             </div>
           </div>
           <!-- 屏幕共享区 -->
@@ -62,6 +62,7 @@
 </template>
   
   <script>
+  import img from '../assets/img/off.jpg'
   import {useMainStore} from '../store/data';
   import vHeader from '../components/header.vue';
   import axios from 'axios';
@@ -77,6 +78,7 @@
         IP_URL: 'http://10.32.68.67:7000',
         socket: null,
         store: useMainStore(),
+        fallbackUrl: img,
         conferenceId: "",  
         isHost: true,
         videoButtonText: "Start Video Stream", 
@@ -143,7 +145,7 @@
     },
 
 
-    mounted() {
+  mounted() {
     // 在页面加载后自动调用 toggleVideoStream
     // this.toggleVideoStream();
     },
@@ -295,9 +297,11 @@ playBufferedAudio() {
                   this.videoStreamStatus = !this.videoStreamStatus;
                   this.videoButtonText = this.videoStreamStatus ? "Stop Video Stream" : "Start Video Stream";
                   if (this.videoStreamStatus) {
-                      // 如果视频流启动，设定视频流的地址
-                      this.videoStreamUrl = this.API_URL + '/get_video';
+                    // 如果视频流启动，设定视频流的地址
+                    this.videoStreamUrl = this.API_URL + '/get_video';
                   }else {
+                    this.stream.videoFrame = null;  // 清空视频帧
+                    this.videoStreamUrl = this.fallbackUrl;
                     // console.error('Error toggling video stream:', response.data.message);
                   }
                 } else {
