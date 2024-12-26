@@ -93,7 +93,7 @@
     },
     created() {
       this.socket = io(this.IP_URL);
-      
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       this.socket.on('connect', async () => {
       console.log('Connected to server');
         this.isHost = this.store.text === 1;

@@ -260,6 +260,7 @@ class MainServer:
         @self.sio.on('room_cancelled_ack') # count the number of acks
         def handle_room_cancelled_ack(sid, data):
             room = data.get('room')
+            del self.conference_servers[room]
             self.sio.close_room(room)
             
             
