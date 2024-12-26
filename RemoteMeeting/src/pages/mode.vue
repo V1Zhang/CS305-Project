@@ -74,7 +74,7 @@ export default {
     }
   },
   created() {
-    this.socket = io('http://10.32.98.215:7000');
+    this.socket = io('http://10.32.68.67:7000');
     this.socket.on('connect', () => {
       console.log('Connected to server');
       this.socket.emit('get_available_conferences');

@@ -57,7 +57,6 @@ class MainServer:
         self.register_socketio_events()
         eventlet.wsgi.server(eventlet.listen(('', 7000)), self.app)
         
-       # 禁用 werkzeug 的 HTTP 请求日志
         WSGIRequestHandler.log_request = lambda *args, **kwargs: None
 
         # 禁用 logging
@@ -112,7 +111,7 @@ class MainServer:
                 room_clients = list(self.sio.manager.get_participants("/", room))
                 cnt = 0
                 for client_sid, _ in room_clients:
-                    if self.sio.get_session(sid,namespace='/'):
+                    if self.sio.get_session(client_sid,namespace='/'):
                         cnt += 1
                 print(f"Number of clients in room {room}: {cnt}")
                 
@@ -128,6 +127,9 @@ class MainServer:
 
         @self.sio.event
         def disconnect(sid):
+            rooms = self.sio.rooms()
+            for room in rooms:
+                self.sio.leave_room(sid=sid,room=room)
             print(f"Client {sid} disconnected.")
 
         # @self.sio.on('create_conference')
@@ -280,7 +282,7 @@ class MainServer:
                         }
                         clients_info.append(client_info)
             
-            self.sio.emit(event='clients_list', data=clients_info, to=sid)
+            self.sio.emit(event='clients_list', data=clients_info)
             print(f"Client {sid} requested clients list in room {room}")
 
 

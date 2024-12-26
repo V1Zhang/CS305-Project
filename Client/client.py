@@ -394,7 +394,7 @@ class ConferenceClient:
                   self.p2pclient.close()
             
             # in p2p mode, acquire the client list
-            if num_clients > 0 and num_clients <= 2 : # TODO: changed to 1
+            if self.mode == 0 and not self.p2pclient.is_running : # TODO: the server will send mode=0
                 self.sio.emit('get_clients', {'room': self.conference_id})
         
         @self.sio.on('clients_list')
@@ -527,6 +527,7 @@ class ConferenceClient:
             img = cv2.flip(img, 1)
 
             _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            # print(self.mode)
             
             if self.mode == 1:
                 video_data = base64.b64encode(buffer).decode('utf-8')
