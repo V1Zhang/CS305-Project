@@ -135,10 +135,18 @@ class MainServer:
                                 continue
                     
             else:
-                print('error')
+                print('error join in room')
+        
+            return "JOIN", 123
 
         @self.sio.event
-        def disconnect(sid):
+        def disconnect(sid, reason):
+            if reason == self.sio.reason.CLIENT_DISCONNECT:
+                print(f"Client {sid} disconnected.")
+            elif reason == self.sio.reason.SERVER_DISCONNECT:
+                print(f"Server disconnect.")
+            else:
+                print(f"disconnect from {reason}")
             rooms = list(self.sio.rooms(sid=sid))
             for room in rooms:
                 self.sio.leave_room(sid=sid,room=room)
@@ -261,7 +269,18 @@ class MainServer:
             elif cnt > 0:
                 self.room_manager[room] = 1
             
-            self.sio.emit(event='mode_change',data={'mode':self.room_manager[room],'num_clients':cnt},room=room)
+            for client_sid, _ in room_clients:
+                if self.sio.get_session(client_sid,namespace='/'):
+                    while True:
+                    # self.sio.emit('mode_change',{'mode':self.room_manager[room],'num_clients':cnt},room=room)
+                        try:
+                            response = self.sio.call('mode_change',{'mode': self.room_manager[room], 'num_clients': cnt}, to = client_sid, timeout=3)
+                            print(response)
+                            break
+                        except TimeoutError:
+                            print("Mode change signal time out, try again!")
+                            continue
+            return "LEAVE", 123
             
         @self.sio.on('cancel_room')
         def handle_cancel_room(sid, data):
