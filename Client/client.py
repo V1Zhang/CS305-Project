@@ -415,7 +415,11 @@ class ConferenceClient:
         @self.sio.on('room_cancelled')
         def handle_room_cancelled(data):
             print(f"Room {data['room']} has been cancelled.")
-            self.conference_id = None #TODO:conference_id should be reduced
+            self.conference_id = None
+            # Close p2p connection
+            if self.p2pclient.is_running:
+                self.p2pclient.close()
+                self.p2pclient.clients_info = []
             self.sio.emit('room_cancelled_ack', { 'room': data['room'] })
             
 
@@ -441,7 +445,17 @@ class ConferenceClient:
                 try:                    
                     IP= 'http://'+config.SERVER_IP_LOGIC+ ":" + str(config.MAIN_SERVER_PORT_LOGIC)
                     print(IP)
-                    self.sio.connect(IP)
+                    if not self.sio.connected:
+                        self.sio.connect(IP)
+                    else:
+                        print("Create Conference Again!")
+                        self.sio.emit('join_room', { 'room': self.conference_id,
+                                        'udpSocket':self.p2pclient.udpSocket.getsockname(),
+                                        'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
+                                        'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
+                                        'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
+                                        }
+                            )
                 except Exception as e:
                     print("Error", f"Error sending message: {e}")
                     
