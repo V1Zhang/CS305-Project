@@ -128,7 +128,7 @@ class MainServer:
 
         @self.sio.event
         def disconnect(sid):
-            rooms = self.sio.rooms()
+            rooms = self.sio.rooms(sid=sid)
             for room in rooms:
                 self.sio.leave_room(sid=sid,room=room)
             print(f"Client {sid} disconnected.")
@@ -240,7 +240,7 @@ class MainServer:
             room_clients = list(self.sio.manager.get_participants("/", room))
             cnt = 0
             for client_sid, _ in room_clients:
-                if self.sio.get_session(sid,namespace='/'):
+                if self.sio.get_session(client_sid,namespace='/'):
                     cnt += 1
             print(f"Number of clients in room {room}: {cnt}")
             # Change the mode of the room according to the number of clients in the room
