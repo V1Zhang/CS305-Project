@@ -92,6 +92,7 @@ class ConferenceClient:
         self.P = None
         self.audio_thread = None
         self.audio_running = False
+
         # screen share
         self.screen_share_thread = None
         self.screen_share_running = False

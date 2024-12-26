@@ -191,71 +191,41 @@
         },
 
 
-        handleIncomingAudioStream(data) {
-          const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
-          if (!encodedAudio) {
-            console.error("No audio buffer received.");
-            return;
-          }
+        // handleIncomingAudioStream(data) {
+        //   const { audio: encodedAudio } = data; // Extract Base64-encoded PCM data
+        //   if (!encodedAudio) {
+        //     console.error("No audio buffer received.");
+        //     return;
+        //   }
 
-          // Decode Base64 audio data into raw PCM
-          const binaryString = atob(encodedAudio);
-          const len = binaryString.length;
-          const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
-          for (let i = 0; i < len; i += 2) {
-            pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
-          }
+        //   // Decode Base64 audio data into raw PCM
+        //   const binaryString = atob(encodedAudio);
+        //   const len = binaryString.length;
+        //   const pcmArray = new Int16Array(len / 2); // 16-bit PCM data
+        //   for (let i = 0; i < len; i += 2) {
+        //     pcmArray[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i); // Little-endian
+        //   }
 
-          // Create an AudioBuffer from PCM data
-          const audioBuffer = this.audioContext.createBuffer(
-            1, // Mono
-            pcmArray.length, // Number of samples
-            44100 // Sample rate (must match sender)
-          );
-          const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
-          for (let i = 0; i < pcmArray.length; i++) {
-            bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
-          }
+        //   // Create an AudioBuffer from PCM data
+        //   const audioBuffer = this.audioContext.createBuffer(
+        //     1, // Mono
+        //     pcmArray.length, // Number of samples
+        //     44100 // Sample rate (must match sender)
+        //   );
+        //   const bufferChannel = audioBuffer.getChannelData(0); // Get buffer for the first channel
+        //   for (let i = 0; i < pcmArray.length; i++) {
+        //     bufferChannel[i] = pcmArray[i] / 32768; // Normalize 16-bit PCM to [-1, 1]
+        //   }
 
-          // Manage audio playback by batching audio frames
-          if (!this.audioQueue) {
-            this.audioQueue = [];
-          }
+        //   // Play the audio
+        //   const source = this.audioContext.createBufferSource();
+        //   source.buffer = audioBuffer;
+        //   source.connect(this.audioContext.destination);
+        //   source.start(0);
 
-          // Store the decoded audio buffer in the queue
-          this.audioQueue.push(audioBuffer);
-
-          // Play audio in batches
-          if (!this.isPlaying && this.audioQueue.length > 0) {
-            this.isPlaying = true;
-            this.playBufferedAudio();
-          }
-        },
-
-playBufferedAudio() {
-  if (this.audioQueue.length === 0) {
-    this.isPlaying = false;
-    return;
-  }
-
-  const audioBuffer = this.audioQueue.shift(); // Get the next audio buffer from the queue
-
-  // Create and play the audio source
-  const source = this.audioContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(this.audioContext.destination);
-  source.onended = () => {
-    // Once the current buffer has finished playing, check if there are more
-    if (this.audioQueue.length > 0) {
-      this.playBufferedAudio();
-    } else {
-      this.isPlaying = false;
-    }
-  };
-
-  // Start playback
-  source.start(0);
-},
+        //   // Save for cleanup (if needed)
+        //   this.audioSource = source;
+        // },
 
 
     handleIncomingScreenShare(data) {
