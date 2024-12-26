@@ -309,7 +309,7 @@ video {
 
 .modal {
   position: fixed;
-  top: 0;
+  top: -280px;
   left: 0;
   width: 100%;
   height: 100%;
