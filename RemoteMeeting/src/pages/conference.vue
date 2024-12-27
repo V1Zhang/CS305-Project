@@ -72,7 +72,7 @@
     },
     data() {
       return {        
-        API_URL: 'http://127.0.0.1:7777',
+        API_URL: 'http://127.0.0.1:7778',
         IP_URL: 'http://10.32.68.67:7000',
         socket: null,
         store: useMainStore(),

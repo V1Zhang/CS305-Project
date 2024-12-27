@@ -245,7 +245,7 @@ class MainServer:
             frame_with_sender = {
                 'audio': audio,
             }
-            self.sio.emit('audio_stream', frame_with_sender,room=room)
+            self.sio.emit('audio_stream', frame_with_sender,room=room, skip_sid=sid)
             
         @self.sio.on('heartbeat')  # 自定义心跳事件
         def heartbeat(sid, data):

@@ -346,20 +346,28 @@ class ConferenceClient:
             print("Connected to server")
             print(self.sio.sid)
             
-            while True:
-                try:
-                    response = self.sio.call('join_room', { 'room': self.conference_id,
+            # while True:
+            #     try:
+            #         response = self.sio.call('join_room', { 'room': self.conference_id,
+            #                             'udpSocket':self.p2pclient.udpSocket.getsockname(),
+            #                             'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
+            #                             'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
+            #                             'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
+            #                             }, timeout = 3
+            #               )
+            #         print(response)
+            #         break
+            #     except TimeoutError:
+            #         print("Client join signal time out, try again!")
+            #         continue
+                
+            self.sio.emit('join_room', { 'room': self.conference_id,
                                         'udpSocket':self.p2pclient.udpSocket.getsockname(),
                                         'videoSocket':self.p2pclient.video_rtpSocket.getsockname(),
                                         'audioSocket':self.p2pclient.audio_rtpSocket.getsockname(),
                                         'screenSocket':self.p2pclient.screen_rtpSocket.getsockname(),
-                                        }, timeout = 3
+                                        }
                           )
-                    print(response)
-                    break
-                except TimeoutError:
-                    print("Client join signal time out, try again!")
-                    continue
             
             threading.Thread(target=send_heartbeat, daemon=True).start()  # 启动心跳线程
 
@@ -449,7 +457,7 @@ class ConferenceClient:
 
     def _playback_audio_loop(self):
         while True:
-            print(self.audio_buffer.qsize() )
+            # print(self.audio_buffer.qsize() )
             try:
                 if self.audio_buffer.qsize() > self.max_queue_size:
                     for _ in range(self.max_queue_size / 2):
@@ -764,7 +772,7 @@ class ConferenceClient:
             
             
     def start(self):
-        self.socketio.run(self.app, host="0.0.0.0", port=7777, debug=False)
+        self.socketio.run(self.app, host="0.0.0.0", port=7778, debug=False)
         # self.app.run(host="0.0.0.0", port=7777, debug=True)
     
     def on_closing(self):

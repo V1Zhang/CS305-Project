@@ -4,7 +4,7 @@ HELP = 'Create         : create an conference\n' \
        'Cancel         : cancel your on-going conference (only the manager)\n\n'
 
 SERVER_IP = '127.0.0.1'
-MAIN_SERVER_PORT = 7777
+MAIN_SERVER_PORT = 7778
 # yhj
 SERVER_IP_LOGIC = '10.32.68.67'
 MAIN_SERVER_PORT_LOGIC = 7000
